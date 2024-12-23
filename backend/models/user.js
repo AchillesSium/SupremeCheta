@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
-const Schema = mongoose.Schema;
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 const userSchema = new mongoose.Schema(
     {
@@ -8,16 +10,21 @@ const userSchema = new mongoose.Schema(
             required: true,
             unique: true,
             trim: true,
+            minlength: [3, 'Username must be at least 3 characters long'],
+            maxlength: [30, 'Username cannot exceed 30 characters']
         },
         email: {
             type: String,
             required: true,
             unique: true,
             lowercase: true,
+            trim: true
         },
         password: {
             type: String,
             required: true,
+            minlength: [8, 'Password must be at least 8 characters long'],
+            select: false // Don't include password in queries by default
         },
         first_name: {
             type: String,
@@ -33,25 +40,204 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: true,
         },
-        address: {
+        profile_image: {
             type: String,
-            default: '',
+            default: 'default-avatar.png'
         },
+        address: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Address'
+        }],
         role: {
             type: String,
-            enum: ['admin', 'user', 'guest'], // Example roles
+            enum: ['admin', 'user', 'guest'],
             default: 'user',
         },
         status: {
             type: String,
-            enum: ['active', 'inactive', 'banned'], // Example statuses
+            enum: ['active', 'inactive', 'banned'],
             default: 'active',
         },
+        // Authentication and verification
+        email_verified: {
+            type: Boolean,
+            default: false
+        },
+        email_verification_token: String,
+        email_verification_expires: Date,
+        password_reset_token: String,
+        password_reset_expires: Date,
+        last_login: Date,
+        refresh_token: String,
+        login_attempts: {
+            type: Number,
+            default: 0
+        },
+        account_locked_until: Date,
+        
+        // User preferences
+        preferences: {
+            newsletter: { 
+                type: Boolean, 
+                default: true 
+            },
+            language: { 
+                type: String, 
+                default: 'en',
+                enum: ['en', 'es', 'fr', 'de'] // Add more languages as needed
+            },
+            currency: { 
+                type: String, 
+                default: 'USD',
+                enum: ['USD', 'EUR', 'GBP'] // Add more currencies as needed
+            },
+            notifications: {
+                email: { type: Boolean, default: true },
+                push: { type: Boolean, default: true },
+                sms: { type: Boolean, default: false }
+            }
+        },
+        
+        // Social media links
+        social_links: {
+            facebook: String,
+            twitter: String,
+            instagram: String,
+            linkedin: String
+        },
+        
+        // Device tracking
+        devices: [{
+            device_id: String,
+            device_type: String,
+            last_used: Date,
+            is_active: Boolean
+        }]
     },
     {
-        timestamps: true, // Automatically adds createdAt and updatedAt
+        timestamps: true,
+        toJSON: { virtuals: true },
+        toObject: { virtuals: true }
     }
 );
+
+// Virtual for full name
+userSchema.virtual('full_name').get(function() {
+    return `${this.first_name} ${this.last_name}`;
+});
+
+// Indexes
+userSchema.index({ email: 1 });
+userSchema.index({ username: 1 });
+userSchema.index({ status: 1 });
+
+// Email validation
+userSchema.path('email').validate(function(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}, 'Invalid email format');
+
+// Phone number validation
+userSchema.path('phone_number').validate(function(phone) {
+    return /^\+?[\d\s-]+$/.test(phone);
+}, 'Invalid phone number format');
+
+// Pre-save middleware
+userSchema.pre('save', async function(next) {
+    // Only hash the password if it has been modified
+    if (!this.isModified('password')) return next();
+    
+    try {
+        // Generate salt and hash password
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
+        next();
+    } catch (error) {
+        next(error);
+    }
+});
+
+// Methods
+userSchema.methods = {
+    // Compare password
+    comparePassword: async function(candidatePassword) {
+        return await bcrypt.compare(candidatePassword, this.password);
+    },
+
+    // Generate JWT token
+    generateAuthToken: function() {
+        return jwt.sign(
+            { 
+                id: this._id,
+                role: this.role,
+                email: this.email
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '1d' }
+        );
+    },
+
+    // Generate refresh token
+    generateRefreshToken: function() {
+        this.refresh_token = crypto.randomBytes(40).toString('hex');
+        return this.refresh_token;
+    },
+
+    // Generate password reset token
+    generatePasswordResetToken: function() {
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        this.password_reset_token = crypto
+            .createHash('sha256')
+            .update(resetToken)
+            .digest('hex');
+        this.password_reset_expires = Date.now() + 30 * 60 * 1000; // 30 minutes
+        return resetToken;
+    },
+
+    // Generate email verification token
+    generateEmailVerificationToken: function() {
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        this.email_verification_token = crypto
+            .createHash('sha256')
+            .update(verificationToken)
+            .digest('hex');
+        this.email_verification_expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+        return verificationToken;
+    },
+
+    // Track login attempt
+    trackLoginAttempt: async function() {
+        this.login_attempts += 1;
+        if (this.login_attempts >= 5) {
+            this.account_locked_until = new Date(Date.now() + 30 * 60 * 1000); // Lock for 30 minutes
+        }
+        await this.save();
+    },
+
+    // Reset login attempts
+    resetLoginAttempts: async function() {
+        this.login_attempts = 0;
+        this.account_locked_until = undefined;
+        await this.save();
+    }
+};
+
+// Static methods
+userSchema.statics = {
+    // Find by email
+    findByEmail: function(email) {
+        return this.findOne({ email: email.toLowerCase() });
+    },
+
+    // Find active users
+    findActive: function() {
+        return this.find({ status: 'active' });
+    },
+
+    // Find by role
+    findByRole: function(role) {
+        return this.find({ role });
+    }
+};
 
 const User = mongoose.model('User', userSchema);
 module.exports = User;
