@@ -7,7 +7,7 @@ const userSchema = new mongoose.Schema(
     {
         username: {
             type: String,
-            required: true,
+            required: [true, 'Username is required'],
             unique: true,
             trim: true,
             minlength: [3, 'Username must be at least 3 characters long'],
@@ -15,30 +15,32 @@ const userSchema = new mongoose.Schema(
         },
         email: {
             type: String,
-            required: true,
+            required: [true, 'Email is required'],
             unique: true,
             lowercase: true,
             trim: true
         },
         password: {
             type: String,
-            required: true,
+            required: [true, 'Password is required'],
             minlength: [8, 'Password must be at least 8 characters long'],
             select: false // Don't include password in queries by default
         },
         first_name: {
             type: String,
-            required: true,
+            required: [true, 'First name is required'],
             trim: true,
+            default: ''
         },
         last_name: {
             type: String,
-            required: true,
             trim: true,
+            default: ''
         },
         phone_number: {
             type: String,
-            required: true,
+            trim: true,
+            default: ''
         },
         profile_image: {
             type: String,
@@ -141,13 +143,12 @@ userSchema.path('phone_number').validate(function(phone) {
     return /^\+?[\d\s-]+$/.test(phone);
 }, 'Invalid phone number format');
 
-// Pre-save middleware
+// Hash password before saving
 userSchema.pre('save', async function(next) {
-    // Only hash the password if it has been modified
-    if (!this.isModified('password')) return next();
-    
     try {
-        // Generate salt and hash password
+        if (!this.isModified('password')) {
+            return next();
+        }
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
         next();
@@ -156,69 +157,79 @@ userSchema.pre('save', async function(next) {
     }
 });
 
-// Methods
-userSchema.methods = {
-    // Compare password
-    comparePassword: async function(candidatePassword) {
-        return await bcrypt.compare(candidatePassword, this.password);
-    },
-
-    // Generate JWT token
-    generateAuthToken: function() {
-        return jwt.sign(
-            { 
-                id: this._id,
-                role: this.role,
-                email: this.email
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: '1d' }
-        );
-    },
-
-    // Generate refresh token
-    generateRefreshToken: function() {
-        this.refresh_token = crypto.randomBytes(40).toString('hex');
-        return this.refresh_token;
-    },
-
-    // Generate password reset token
-    generatePasswordResetToken: function() {
-        const resetToken = crypto.randomBytes(32).toString('hex');
-        this.password_reset_token = crypto
-            .createHash('sha256')
-            .update(resetToken)
-            .digest('hex');
-        this.password_reset_expires = Date.now() + 30 * 60 * 1000; // 30 minutes
-        return resetToken;
-    },
-
-    // Generate email verification token
-    generateEmailVerificationToken: function() {
-        const verificationToken = crypto.randomBytes(32).toString('hex');
-        this.email_verification_token = crypto
-            .createHash('sha256')
-            .update(verificationToken)
-            .digest('hex');
-        this.email_verification_expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-        return verificationToken;
-    },
-
-    // Track login attempt
-    trackLoginAttempt: async function() {
-        this.login_attempts += 1;
-        if (this.login_attempts >= 5) {
-            this.account_locked_until = new Date(Date.now() + 30 * 60 * 1000); // Lock for 30 minutes
-        }
-        await this.save();
-    },
-
-    // Reset login attempts
-    resetLoginAttempts: async function() {
-        this.login_attempts = 0;
-        this.account_locked_until = undefined;
-        await this.save();
+// Method to check password
+userSchema.methods.matchPassword = async function(enteredPassword) {
+    try {
+        return await bcrypt.compare(enteredPassword, this.password);
+    } catch (error) {
+        throw new Error('Password comparison failed');
     }
+};
+
+// Compare password
+userSchema.methods.comparePassword = async function(candidatePassword) {
+    try {
+        return await bcrypt.compare(candidatePassword, this.password);
+    } catch (error) {
+        throw new Error('Password comparison failed');
+    }
+};
+
+// Generate JWT token
+userSchema.methods.generateAuthToken = function() {
+    return jwt.sign(
+        { 
+            id: this._id,
+            role: this.role,
+            email: this.email
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '1d' }
+    );
+};
+
+// Generate refresh token
+userSchema.methods.generateRefreshToken = function() {
+    this.refresh_token = crypto.randomBytes(40).toString('hex');
+    return this.refresh_token;
+};
+
+// Generate password reset token
+userSchema.methods.generatePasswordResetToken = function() {
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    this.password_reset_token = crypto
+        .createHash('sha256')
+        .update(resetToken)
+        .digest('hex');
+    this.password_reset_expires = Date.now() + 30 * 60 * 1000; // 30 minutes
+    return resetToken;
+};
+
+// Generate email verification token
+userSchema.methods.generateEmailVerificationToken = function() {
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    this.email_verification_token = crypto
+        .createHash('sha256')
+        .update(verificationToken)
+        .digest('hex');
+    this.email_verification_expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    return verificationToken;
+};
+
+// Track login attempt
+userSchema.methods.trackLoginAttempt = async function() {
+    this.login_attempts += 1;
+    if (this.login_attempts >= 5) {
+        this.account_locked_until = new Date(Date.now() + 30 * 60 * 1000); // Lock for 30 minutes
+    }
+    await this.save();
+};
+
+// Reset login attempts
+userSchema.methods.resetLoginAttempts = async function() {
+    this.login_attempts = 0;
+    this.account_locked_until = undefined;
+    await this.save();
 };
 
 // Static methods

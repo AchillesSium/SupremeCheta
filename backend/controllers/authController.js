@@ -1,77 +1,41 @@
 const User = require('../models/user');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const authController = {
-    login: async (req, res) => {
-        try {
-            const { email, password } = req.body;
-
-            // Find user by email and select password
-            const user = await User.findOne({ email }).select('+password');
-            if (!user) {
-                return res.status(401).json({ message: 'Invalid credentials' });
-            }
-
-            // Check password
-            const isMatch = await user.comparePassword(password);
-            if (!isMatch) {
-                return res.status(401).json({ message: 'Invalid credentials' });
-            }
-
-            // Generate token
-            const token = jwt.sign(
-                { id: user._id, role: user.role },
-                process.env.JWT_SECRET,
-                { expiresIn: '1d' }
-            );
-
-            res.json({
-                success: true,
-                token,
-                user: {
-                    id: user._id,
-                    username: user.username,
-                    email: user.email,
-                    role: user.role
-                }
-            });
-        } catch (error) {
-            res.status(500).json({ 
-                success: false,
-                message: 'Login failed',
-                error: error.message 
-            });
-        }
-    },
-
     register: async (req, res) => {
         try {
-            const { username, email, password } = req.body;
+            const { username, email, password, first_name, last_name, phone_number } = req.body;
 
-            // Check if user already exists
-            let user = await User.findOne({ email });
-            if (user) {
-                return res.status(400).json({ message: 'User already exists' });
-            }
-
-            // Create new user
-            user = new User({
-                username,
-                email,
-                password
+            // Check for existing user
+            const existingUser = await User.findOne({
+                $or: [{ email }, { username }]
             });
 
-            // Save user
-            await user.save();
+            if (existingUser) {
+                return res.status(400).json({
+                    success: false,
+                    message: existingUser.email === email ? 'Email already registered' : 'Username already taken'
+                });
+            }
+
+            // Create user
+            const user = await User.create({
+                username,
+                email,
+                password, // Will be hashed by pre-save hook
+                first_name,
+                last_name,
+                phone_number
+            });
 
             // Generate token
             const token = jwt.sign(
-                { id: user._id, role: user.role },
-                process.env.JWT_SECRET,
+                { id: user._id },
+                process.env.JWT_SECRET || 'your-secret-key',
                 { expiresIn: '1d' }
             );
 
+            // Send response
             res.status(201).json({
                 success: true,
                 token,
@@ -79,14 +43,69 @@ const authController = {
                     id: user._id,
                     username: user.username,
                     email: user.email,
-                    role: user.role
+                    first_name: user.first_name,
+                    last_name: user.last_name
                 }
             });
         } catch (error) {
-            res.status(500).json({ 
+            console.error('Registration error:', error);
+            res.status(500).json({
                 success: false,
                 message: 'Registration failed',
-                error: error.message 
+                error: error.message
+            });
+        }
+    },
+
+    login: async (req, res) => {
+        try {
+            const { email, password } = req.body;
+
+            // Find user and include password
+            const user = await User.findOne({ email }).select('+password');
+
+            if (!user) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Invalid credentials'
+                });
+            }
+
+            // Check password
+            const isMatch = await user.matchPassword(password);
+
+            if (!isMatch) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Invalid credentials'
+                });
+            }
+
+            // Generate token
+            const token = jwt.sign(
+                { id: user._id },
+                process.env.JWT_SECRET || 'your-secret-key',
+                { expiresIn: '1d' }
+            );
+
+            // Send response
+            res.json({
+                success: true,
+                token,
+                user: {
+                    id: user._id,
+                    username: user.username,
+                    email: user.email,
+                    first_name: user.first_name,
+                    last_name: user.last_name
+                }
+            });
+        } catch (error) {
+            console.error('Login error:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Login failed',
+                error: error.message
             });
         }
     }

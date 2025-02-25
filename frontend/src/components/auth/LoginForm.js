@@ -1,4 +1,5 @@
-import React , {useState} from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Box,
     Button,
@@ -6,100 +7,142 @@ import {
     TextField,
     Typography,
     Alert,
-    Paper
+    Paper,
+    CircularProgress
 } from '@mui/material';
-
-import LockedOutlinedIcon from '@mui/icons-material/LockedOutlined';
+import LockOutlined from '@mui/icons-material/LockOutlined';
+import { useAuth } from '../../providers/AuthProvider';
 
 const LoginForm = () => {
+    const navigate = useNavigate();
+    const { login, clearAuth } = useAuth();
     const [formData, setFormData] = useState({
         email: '',
         password: ''
     });
     const [error, setError] = useState('');
-    const [success, setSuccess] = useState(''); 
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Clear auth state when component mounts
+    useEffect(() => {
+        clearAuth();
+    }, [clearAuth]);
 
     const handleChange = (e) => {
-        setFormData({
-            ...formData,
-            [e.target.name]: e.target.value
-        });
-    }
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-
-        // we will add actual login logic here
-        setError('');
-        console.log("Login attempt with: ",formData);
-        setSuccess('Login successful!');
+        const { name, value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: value
+        }));
     };
-    
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (isSubmitting) return;
+
+        setError('');
+        setIsSubmitting(true);
+
+        try {
+            console.log('Attempting login with:', formData);
+            await login(formData);
+            navigate('/dashboard', { replace: true });
+        } catch (err) {
+            console.error('Login error:', err);
+            setError(err.message || 'Login failed. Please try again.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     return (
         <Container component="main" maxWidth="xs">
-          <Paper elevation={3} sx={{ p: 4, mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <Box sx={{ 
-              backgroundColor: 'primary.main', 
-              p: 2, 
-              borderRadius: '50%', 
-              mb: 2 
-            }}>
-              <LockOutlinedIcon sx={{ color: 'white' }} />
-            </Box>
-            <Typography component="h1" variant="h5" sx={{ mb: 3 }}>
-              Sign in to Supreme Cheta
-            </Typography>
-            
-            {error && (
-              <Alert severity="error" sx={{ mb: 2, width: '100%' }}>
-                {error}
-              </Alert>
-            )}
-    
-            <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                id="email"
-                label="Email Address"
-                name="email"
-                autoComplete="email"
-                autoFocus
-                value={formData.email}
-                onChange={handleChange}
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="password"
-                label="Password"
-                type="password"
-                id="password"
-                autoComplete="current-password"
-                value={formData.password}
-                onChange={handleChange}
-                sx={{ mb: 3 }}
-              />
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                sx={{ 
-                  py: 1.5,
-                  textTransform: 'none',
-                  fontSize: '1.1rem'
+            <Box
+                sx={{
+                    marginTop: 8,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
                 }}
-              >
-                Sign In
-              </Button>
+            >
+                <Paper
+                    elevation={3}
+                    sx={{
+                        padding: 4,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        width: '100%',
+                    }}
+                >
+                    <LockOutlined sx={{ fontSize: 40, mb: 2, color: 'primary.main' }} />
+                    <Typography component="h1" variant="h5" sx={{ mb: 3 }}>
+                        Sign In
+                    </Typography>
+
+                    {error && (
+                        <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
+                            {error}
+                        </Alert>
+                    )}
+
+                    <Box 
+                        component="form" 
+                        onSubmit={handleSubmit} 
+                        sx={{ mt: 1, width: '100%' }}
+                        noValidate
+                    >
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
+                            id="email"
+                            label="Email Address"
+                            name="email"
+                            autoComplete="email"
+                            autoFocus
+                            value={formData.email}
+                            onChange={handleChange}
+                            disabled={isSubmitting}
+                            inputProps={{
+                                autoCapitalize: 'none'
+                            }}
+                        />
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
+                            name="password"
+                            label="Password"
+                            type="password"
+                            id="password"
+                            autoComplete="current-password"
+                            value={formData.password}
+                            onChange={handleChange}
+                            disabled={isSubmitting}
+                        />
+                        <Button
+                            type="submit"
+                            fullWidth
+                            variant="contained"
+                            sx={{ mt: 3, mb: 2 }}
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting ? <CircularProgress size={24} /> : 'Sign In'}
+                        </Button>
+                        <Button
+                            fullWidth
+                            variant="text"
+                            onClick={() => navigate('/register')}
+                            disabled={isSubmitting}
+                        >
+                            Don't have an account? Sign Up
+                        </Button>
+                    </Box>
+                </Paper>
             </Box>
-          </Paper>
         </Container>
-      );
-    };
-    
-    export default LoginForm;
-    
+    );
+};
+
+export default LoginForm;
