@@ -128,11 +128,6 @@ userSchema.virtual('full_name').get(function() {
     return `${this.first_name} ${this.last_name}`;
 });
 
-// Indexes
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
-userSchema.index({ status: 1 });
-
 // Email validation
 userSchema.path('email').validate(function(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);

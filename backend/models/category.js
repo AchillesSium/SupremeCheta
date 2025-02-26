@@ -1,25 +1,66 @@
 const mongoose = require('mongoose');
 
-const categorySchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    description: {
-      type: String,
-      default: '',
-    },
-    attribute_id: {
-      type: mongoose.Schema.Types.ObjectId, // Assuming attributes are stored in another collection
-      ref: 'ProductImage', // Reference to the ProductImage or related collection
-    },
+const categorySchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: [true, 'Category name is required'],
+    trim: true,
+    unique: true
   },
-  {
-    timestamps: true, // Automatically adds createdAt and updatedAt fields
+  slug: {
+    type: String,
+    unique: true,
+    lowercase: true
+  },
+  description: {
+    type: String,
+    required: false
+  },
+  parent: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    default: null
+  },
+  image: {
+    type: String,
+    required: false
+  },
+  status: {
+    type: String,
+    enum: ['active', 'inactive'],
+    default: 'active'
+  },
+  order: {
+    type: Number,
+    default: 0
   }
-);
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+// Virtual for child categories
+categorySchema.virtual('children', {
+  ref: 'Category',
+  localField: '_id',
+  foreignField: 'parent'
+});
+
+// Pre-save middleware to create slug
+categorySchema.pre('save', function(next) {
+  this.slug = this.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  next();
+});
+
+// Static method to get full category tree
+categorySchema.statics.getTree = async function() {
+  return this.find({ parent: null })
+    .populate({
+      path: 'children',
+      populate: { path: 'children' }
+    });
+};
 
 const Category = mongoose.model('Category', categorySchema);
 
