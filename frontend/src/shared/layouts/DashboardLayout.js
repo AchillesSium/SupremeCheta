@@ -3,7 +3,7 @@ import { Box, CssBaseline, Toolbar } from '@mui/material';
 import Sidebar from '../components/Sidebar/Sidebar';
 import Header from '../components/Header/Header';
 
-const drawerWidth = 240;
+const drawerWidth = 0;
 
 const DashboardLayout = ({ children, toggleTheme, isDarkMode }) => {
   const [open, setOpen] = useState(true);
@@ -33,7 +33,7 @@ const DashboardLayout = ({ children, toggleTheme, isDarkMode }) => {
           flexGrow: 1,
           p: 3,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
-          marginLeft: { sm: `${open ? drawerWidth : 72}px` },
+          marginLeft: { sm: `${open ? drawerWidth : -180}px` },
           transition: (theme) =>
             theme.transitions.create(['margin', 'width'], {
               easing: theme.transitions.easing.sharp,

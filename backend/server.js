@@ -77,9 +77,10 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const swaggerUi = require('swagger-ui-express');
 const specs = require('./src/config/swagger');
+const User = require('./models/user');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Middleware
 app.use(cors());
@@ -94,7 +95,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
 
 // MongoDB Connection
 mongoose
-    .connect(process.env.MONGODB_URI, {
+    .connect(process.env.MONGO_URI, {
         useNewUrlParser: true,
         useUnifiedTopology: true
     })
@@ -116,6 +117,48 @@ app.use('/api/auth', authRoutes);
 // Basic route for testing
 app.get('/', (req, res) => {
     res.json({ message: 'Supreme Cheta API is running' });
+});
+
+// Create a new user
+app.post('/users', async (req, res) => {
+    try {
+        const user = new User(req.body);
+        await user.save();
+        res.status(201).json(user);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+app.get('/save-user', (req, res) => {
+    const newUser = new User({
+        username: 'achilles 1',
+        email: 'aqib@achilles1.com',
+        password: 'pass1234',
+        first_name: 'Achilles',
+        last_name: 'Sium',
+        phone_number: '+1234567891',
+        role: 'user',
+        status: 'active',
+    });
+
+    newUser.save()
+    .then((result) => {
+        res.send(result)
+    })
+    .catch((err) => {
+        console.log(err)
+    });
+});
+
+// Get all users
+app.get('/users', async (req, res) => {
+    try {
+        const users = await User.find();
+        res.json(users);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // Error handling middleware
