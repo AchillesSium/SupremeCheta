@@ -75,6 +75,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const authRoutes = require('./routes/auth');
+const categoryRoutes = require('./routes/categoryRoutes');
 const swaggerUi = require('swagger-ui-express');
 const specs = require('./src/config/swagger');
 const User = require('./models/user');
@@ -113,6 +114,7 @@ mongoose
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // Basic route for testing
 app.get('/', (req, res) => {
