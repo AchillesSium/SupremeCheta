@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Box, CssBaseline, Toolbar } from '@mui/material';
+import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar/Sidebar';
 import Header from '../components/Header/Header';
 
 const drawerWidth = 240;
 
-const DashboardLayout = ({ children, toggleTheme, isDarkMode }) => {
+const DashboardLayout = ({ toggleTheme, isDarkMode }) => {
   const [open, setOpen] = useState(true);
 
   const toggleDrawer = () => {
@@ -42,7 +43,7 @@ const DashboardLayout = ({ children, toggleTheme, isDarkMode }) => {
         }}
       >
         <Toolbar />
-        {children}
+        <Outlet />
       </Box>
     </Box>
   );
