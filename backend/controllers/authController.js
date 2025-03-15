@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const authController = {
     register: async (req, res) => {
         try {
-            const { username, email, password, first_name, last_name, phone_number } = req.body;
+            const { username, email, password, first_name, last_name, address, phone_number } = req.body;
 
             // Check for existing user
             const existingUser = await User.findOne({
@@ -20,11 +20,12 @@ const authController = {
 
             // Create user
             const user = await User.create({
+                first_name,
+                last_name,
                 username,
                 email,
                 password, // Will be hashed by pre-save hook
-                first_name,
-                last_name,
+                address,
                 phone_number
             });
 
@@ -35,16 +36,20 @@ const authController = {
                 { expiresIn: '1d' }
             );
 
+            await user.save();
+
             // Send response
             res.status(201).json({
                 success: true,
                 token,
                 user: {
-                    id: user._id,
                     username: user.username,
                     email: user.email,
                     first_name: user.first_name,
-                    last_name: user.last_name
+                    last_name: user.last_name,
+                    password: user.password,
+                    address: user.address,
+                    phone_number: user.phone_number
                 }
             });
         } catch (error) {
@@ -94,10 +99,12 @@ const authController = {
                 token,
                 user: {
                     id: user._id,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
                     username: user.username,
                     email: user.email,
-                    first_name: user.first_name,
-                    last_name: user.last_name
+                    address: user.address,
+                    phone_number: user.phone_number
                 }
             });
         } catch (error) {
