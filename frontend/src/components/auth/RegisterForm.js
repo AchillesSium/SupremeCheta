@@ -18,11 +18,12 @@ const RegisterForm = () => {
     const navigate = useNavigate();
     const { register } = useAuth();
     const [formData, setFormData] = useState({
+        first_name: '',
+        last_name: '',
         username: '',
         email: '',
         password: '',
-        first_name: '',
-        last_name: '',
+        address: '',
         phone_number: ''
     });
     const [error, setError] = useState('');
@@ -123,6 +124,7 @@ const RegisterForm = () => {
                             </Grid>
                             <Grid item xs={12} sm={6}>
                                 <TextField
+                                    required
                                     fullWidth
                                     id="last_name"
                                     label="Last Name"
@@ -181,6 +183,20 @@ const RegisterForm = () => {
                             </Grid>
                             <Grid item xs={12}>
                                 <TextField
+                                    required
+                                    fullWidth
+                                    id="address"
+                                    label="Address"
+                                    name="address"
+                                    autoComplete="address"
+                                    value={formData.address}
+                                    onChange={handleChange}
+                                    disabled={isSubmitting}
+                                />
+                            </Grid>
+                            <Grid item xs={12}>
+                                <TextField
+                                    required
                                     fullWidth
                                     name="phone_number"
                                     label="Phone Number"
