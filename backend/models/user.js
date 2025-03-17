@@ -47,7 +47,7 @@ const userSchema = new mongoose.Schema(
             default: 'default-avatar.png'
         },
         address: [{
-            type: mongoose.Schema.Types.ObjectId,
+            type: String,
             ref: 'Address'
         }],
         role: {

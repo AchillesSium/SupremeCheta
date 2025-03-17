@@ -1,5 +1,5 @@
 export const config = {
-  apiUrl: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+  apiUrl: process.env.REACT_APP_API_URL || 'http://localhost:5001/api',
   imageUrl: process.env.REACT_APP_IMAGE_URL || 'http://localhost:5000/uploads',
   socketUrl: process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000',
   appName: 'Supreme Cheta',
