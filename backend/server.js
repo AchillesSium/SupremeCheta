@@ -82,6 +82,7 @@ const User = require('./models/user');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+const db = process.env.MONGODB_URI || 'test' ;
 
 // Middleware
 app.use(cors());
@@ -96,10 +97,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
 
 // MongoDB Connection
 mongoose
-    .connect(process.env.MONGO_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true
-    })
+    .connect(db)
     .then(() => {
         console.log('Connected to MongoDB');
         // Start server only after successful database connection
