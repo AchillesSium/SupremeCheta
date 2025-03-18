@@ -9,6 +9,7 @@ import DashboardLayout from './shared/layouts/DashboardLayout';
 import Dashboard from './features/admin/Dashboard';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
+import CategoryPage from './features/category/CategoryPage';
 
 // Create Query Client
 const queryClient = new QueryClient({
@@ -50,6 +51,7 @@ const App = () => {
           }>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="/dashboard/categories" element={<CategoryPage />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />
           </Route>
         </Routes>
