@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AppBar,
   Box,
@@ -26,6 +27,7 @@ import {
   Email as EmailIcon,
 } from '@mui/icons-material';
 import { styled, alpha } from '@mui/material/styles';
+import { useAuth } from '../../../providers/AuthProvider';
 
 const drawerWidth = 240;
 
@@ -126,12 +128,20 @@ const Header = ({ open, toggleDrawer, toggleTheme, isDarkMode }) => {
   const theme = useTheme();
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
   const [profileAnchorEl, setProfileAnchorEl] = useState(null);
+  const { logout, user } = useAuth();
+  const navigate = useNavigate();
 
   const handleNotificationsOpen = (event) => setNotificationsAnchorEl(event.currentTarget);
   const handleProfileOpen = (event) => setProfileAnchorEl(event.currentTarget);
   const handleMenuClose = () => {
     setNotificationsAnchorEl(null);
     setProfileAnchorEl(null);
+  };
+
+  const handleLogout = () => {
+    handleMenuClose();
+    logout();
+    navigate('/login');
   };
 
   return (
@@ -294,7 +304,7 @@ const Header = ({ open, toggleDrawer, toggleTheme, isDarkMode }) => {
         >
           <MenuItem onClick={handleMenuClose}>Profile</MenuItem>
           <MenuItem onClick={handleMenuClose}>Settings</MenuItem>
-          <MenuItem onClick={handleMenuClose}>Logout</MenuItem>
+          <MenuItem onClick={handleLogout}>Logout</MenuItem>
         </Menu>
       </Toolbar>
     </AppBar>
