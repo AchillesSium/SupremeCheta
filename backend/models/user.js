@@ -46,13 +46,14 @@ const userSchema = new mongoose.Schema(
             type: String,
             default: 'default-avatar.png'
         },
-        address: [{
+        address: {
             type: String,
-            ref: 'Address'
-        }],
+            default: ''
+        },
         role: {
             type: String,
-            enum: ['admin', 'user', 'guest'],
+            enum: ['superAdmin', 'admin', 'user', 'guest'],
+            required: true ,
             default: 'user',
         },
         status: {

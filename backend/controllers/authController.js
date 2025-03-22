@@ -4,7 +4,10 @@ const jwt = require('jsonwebtoken');
 const authController = {
     register: async (req, res) => {
         try {
-            const { username, email, password, first_name, last_name, address, phone_number } = req.body;
+            const { username, email, password, first_name, last_name, address, role, phone_number } = req.body;
+
+            // Set default role if none is provided
+            const userRole = role || 'user';
 
             // Check for existing user
             const existingUser = await User.findOne({
@@ -24,8 +27,9 @@ const authController = {
                 last_name,
                 username,
                 email,
-                password, // Will be hashed by pre-save hook
+                password,
                 address,
+                role: userRole,
                 phone_number
             });
 

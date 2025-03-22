@@ -18,63 +18,31 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-  
+
   schemas:
     User:
       type: object
       properties:
-        id:
+        username:
           type: string
-          format: uuid
         email:
           type: string
           format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        address:
+          type: string
         role:
           type: string
-          enum: [customer, vendor, admin]
-        profile:
-          type: object
-          properties:
-            firstName:
-              type: string
-            lastName:
-              type: string
-            phone:
-              type: string
-    
-    Product:
-      type: object
-      properties:
-        id:
+          enum: ['superAdmin', 'admin', 'user', 'guest']
+        phone_number:
           type: string
-          format: uuid
-        name:
-          type: string
-        price:
-          type: number
-        description:
-          type: string
-        vendorId:
-          type: string
-          format: uuid
-        category:
-          type: array
-          items:
-            type: string
-        inventory:
-          type: object
-          properties:
-            quantity:
-              type: number
-            status:
-              type: string
 
     Category:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
         name:
           type: string
           description: "Category name"
@@ -108,19 +76,52 @@ paths:
           application/json:
             schema:
               type: object
+              required:
+                - username
+                - email
+                - password
+                - first_name
+                - last_name
+                - role
+                - phone_number
               properties:
+                username:
+                  type: string
                 email:
                   type: string
+                  format: email
                 password:
                   type: string
+                  format: password
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                address:
+                  type: string
                 role:
+                  type: string
+                  enum: ['superAdmin', 'admin', 'user', 'guest']
+                  default: 'user'
+                phone_number:
                   type: string
       responses:
         '201':
           description: User created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
         '400':
           description: Invalid input
-  
+
   /auth/login:
     post:
       tags:
@@ -135,61 +136,144 @@ paths:
               properties:
                 email:
                   type: string
+                  format: email
                 password:
                   type: string
+                  format: password
       responses:
         '200':
           description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
         '401':
           description: Invalid credentials
 
-  /products:
+  /user/getAllUsers:
     get:
       tags:
-        - Products
-      summary: Get all products
-      parameters:
-        - in: query
-          name: page
-          schema:
-            type: integer
-        - in: query
-          name: limit
-          schema:
-            type: integer
-        - in: query
-          name: category
-          schema:
-            type: string
+        - User
+      summary: Get all users
       responses:
         '200':
-          description: List of products
+          description: List of all users
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Product'
-    
-    post:
+                  $ref: '#/components/schemas/User'
+        '500':
+          description: Server error
+
+  /user/{id}:
+    get:
       tags:
-        - Products
-      summary: Create a new product
-      security:
-        - BearerAuth: []
+        - User
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+        '500':
+          description: Server error
+
+    put:
+      tags:
+        - User
+      summary: Update user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Product'
+              $ref: '#/components/schemas/User'
       responses:
-        '201':
-          description: Product created successfully
-        '401':
-          description: Unauthorized
-        '403':
-          description: Forbidden - Not a vendor
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid request body
+        '404':
+          description: User not found
+
+    delete:
+      tags:
+        - User
+      summary: Delete user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID
+      responses:
+        '200':
+          description: User deleted successfully
+        '404':
+          description: User not found
+        '500':
+          description: Server error
+
+  /user/role/{role}:
+    get:
+      tags:
+        - User
+      summary: Get users by role
+      parameters:
+        - name: role
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: ['superAdmin', 'admin', 'user', 'guest']
+          description: Role of users to fetch
+      responses:
+        '200':
+          description: List of users by role
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid role
+        '404':
+          description: No users found with this role
+        '500':
+          description: Server error
 
   /categories:
     get:
@@ -248,7 +332,7 @@ paths:
                 $ref: '#/components/schemas/Category'
         '404':
           description: Category not found
-    
+
     put:
       tags:
         - Categories
@@ -296,26 +380,3 @@ paths:
           description: Category not found
         '403':
           description: Forbidden - Only admins can delete categories
-
-  /categories/{id}/subcategories:
-    get:
-      tags:
-        - Categories
-      summary: Get subcategories of a category
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: List of subcategories
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Category'
-        '404':
-          description: Category not found

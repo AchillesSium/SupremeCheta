@@ -1,33 +1,6 @@
 const express = require('express');
 const router = express.Router();
 
-/**
- * @swagger
- * /api/products:
- *   get:
- *     summary: Retrieve a list of products
- *     description: Get a list of all products with optional filtering
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *         description: Page number for pagination
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *         description: Number of items per page
- *     responses:
- *       200:
- *         description: A list of products
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Product'
- */
 router.get('/', async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
@@ -42,28 +15,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/products:
- *   post:
- *     summary: Create a new product
- *     description: Add a new product to the database
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Product'
- *     responses:
- *       201:
- *         description: Product created successfully
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Forbidden - Not a vendor
- */
 router.post('/', auth, vendorOnly, async (req, res) => {
   try {
     const product = new Product({

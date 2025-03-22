@@ -47,7 +47,7 @@ mongoose
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
-app.use('/api/users', userRoutes);
+app.use('/api/user', userRoutes);
 
 // Basic route for testing
 app.get('/', (req, res) => {

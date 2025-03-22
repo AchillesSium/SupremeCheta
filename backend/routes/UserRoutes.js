@@ -3,23 +3,12 @@ const router = express.Router();
 const User = require('../models/user');
 
 // Get all users
-router.get('/', async (req, res) => {
+router.get('/getAllUsers', async (req, res) => {
     try {
-        const users = await User.find();
+        const users = await User.find().select('-password'); // Exclude password field
         res.json(users);
     } catch (error) {
         res.status(500).json({ error: error.message });
-    }
-});
-
-// Create a new user
-router.post('/', async (req, res) => {
-    try {
-        const user = new User(req.body);
-        await user.save();
-        res.status(201).json(user);
-    } catch (error) {
-        res.status(400).json({ error: error.message });
     }
 });
 
@@ -46,6 +35,31 @@ router.put('/:id', async (req, res) => {
         res.json(user);
     } catch (error) {
         res.status(400).json({ error: error.message });
+    }
+});
+
+// Get users by role
+router.get('/role/:role', async (req, res) => {
+    try {
+        const { role } = req.params;
+
+        // Validate role
+        const validRoles = ['superAdmin', 'admin', 'user', 'guest'];
+        if (!validRoles.includes(role)) {
+            return res.status(400).json({ message: 'Invalid role' });
+        }
+
+        const users = await User.find({ role });
+
+        console.log('Query:', { role }); 
+
+        if (users.length === 0) {
+            return res.status(404).json({ message: 'No users found with this role' });
+        }
+
+        res.json(users);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
