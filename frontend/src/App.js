@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -28,7 +28,6 @@ const queryClient = new QueryClient({
 const App = () => {
   const [mode, setMode] = useState('light');
   const { user, isRegistered } = useAuth();
-  const location = useLocation();
 
   // Create theme instance
   const theme = useMemo(
@@ -69,7 +68,7 @@ const App = () => {
               <RegisterForm />
             )
           } />
-          
+
           {/* Dashboard Routes */}
           <Route path="/" element={
             <DashboardLayout toggleTheme={toggleTheme} isDarkMode={mode === 'dark'} />
@@ -79,6 +78,8 @@ const App = () => {
             <Route path="/dashboard/categories" element={<CategoryPage />} />
             <Route path="/dashboard/add-category" element={<AddCategoryPage />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />
+          </Route>
+
           <Route path="/login" element={
             user ? (
               <Navigate to="/dashboard" replace />
@@ -88,25 +89,11 @@ const App = () => {
               <LoginForm />
             )
           } />
-          
-          {/* Protected Dashboard Routes */}
-          <Route 
-            path="/dashboard" 
-            element={
-              !user ? (
-                <Navigate to="/" state={{ from: location }} replace />
-              ) : (
-                <DashboardLayout toggleTheme={toggleTheme} isDarkMode={mode === 'dark'} />
-              )
-            }
-          >
-            <Route index element={<Dashboard />} />
-          </Route>
 
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        <Toaster 
+        <Toaster
           position="top-right"
           toastOptions={{
             duration: 5000,

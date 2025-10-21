@@ -49,7 +49,7 @@ const RegisterForm = () => {
         try {
             console.log('Attempting registration with:', formData);
             const response = await register(formData);
-            
+            console.log(response)
             setSuccess('Registration successful! Redirecting to login...');
             
             // Clear local storage before redirecting
