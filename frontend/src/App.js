@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { lightTheme, darkTheme } from './theme/theme';
+import { useAuth } from './providers/AuthProvider';
 import DashboardLayout from './shared/layouts/DashboardLayout';
 import Dashboard from './features/admin/Dashboard';
 import LoginForm from './components/auth/LoginForm';
@@ -26,6 +27,8 @@ const queryClient = new QueryClient({
 
 const App = () => {
   const [mode, setMode] = useState('light');
+  const { user, isRegistered } = useAuth();
+  const location = useLocation();
 
   // Create theme instance
   const theme = useMemo(
@@ -37,14 +40,35 @@ const App = () => {
     setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
   };
 
+  // Determine the initial route
+  const getInitialRoute = () => {
+    if (user) {
+      return <Navigate to="/dashboard" replace />;
+    }
+    if (isRegistered === false) {
+      return <Navigate to="/register" replace />;
+    }
+    return <Navigate to="/login" replace />;
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Routes>
+          {/* Initial Route */}
+          <Route path="/" element={getInitialRoute()} />
+
           {/* Auth Routes */}
-          <Route path="/login" element={<LoginForm />} />
-          <Route path="/register" element={<RegisterForm />} />
+          <Route path="/register" element={
+            user ? (
+              <Navigate to="/dashboard" replace />
+            ) : isRegistered ? (
+              <Navigate to="/login" replace />
+            ) : (
+              <RegisterForm />
+            )
+          } />
           
           {/* Dashboard Routes */}
           <Route path="/" element={
@@ -55,7 +79,32 @@ const App = () => {
             <Route path="/dashboard/categories" element={<CategoryPage />} />
             <Route path="/dashboard/add-category" element={<AddCategoryPage />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />
+          <Route path="/login" element={
+            user ? (
+              <Navigate to="/dashboard" replace />
+            ) : isRegistered === false ? (
+              <Navigate to="/register" replace />
+            ) : (
+              <LoginForm />
+            )
+          } />
+          
+          {/* Protected Dashboard Routes */}
+          <Route 
+            path="/dashboard" 
+            element={
+              !user ? (
+                <Navigate to="/" state={{ from: location }} replace />
+              ) : (
+                <DashboardLayout toggleTheme={toggleTheme} isDarkMode={mode === 'dark'} />
+              )
+            }
+          >
+            <Route index element={<Dashboard />} />
           </Route>
+
+          {/* Catch all route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <Toaster 
           position="top-right"

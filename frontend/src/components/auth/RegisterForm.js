@@ -48,7 +48,8 @@ const RegisterForm = () => {
 
         try {
             console.log('Attempting registration with:', formData);
-            await register(formData);
+            const response = await register(formData);
+            
             setSuccess('Registration successful! Redirecting to login...');
             
             // Clear local storage before redirecting
@@ -59,7 +60,9 @@ const RegisterForm = () => {
             navigate('/login', { replace: true });
         } catch (err) {
             console.error('Registration error:', err);
-            setError(err.message || 'Registration failed. Please try again.');
+            // Extract the error message from the response
+            const errorMessage = err.response?.data?.message || err.message || 'Registration failed';
+            setError(errorMessage);
         } finally {
             setIsSubmitting(false);
         }
