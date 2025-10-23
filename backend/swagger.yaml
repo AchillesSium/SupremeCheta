@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Supreme Cheta API
   description: Multi-vendor E-commerce Platform API
-  version: 1.0.0
+  version: 1.1.0
   contact:
     email: support@supremecheta.com
 
@@ -18,8 +18,15 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-  
+
   schemas:
+    # ---------- COMMON ----------
+    ObjectId:
+      type: string
+      description: MongoDB ObjectId
+      example: "652f1c8a2c5d3f0012ab34cd"
+
+    # ---------- USERS / AUTH ----------
     User:
       type: object
       properties:
@@ -42,6 +49,7 @@ components:
             phone:
               type: string
     
+    # ---------- PRODUCTS (unchanged) ----------
     Product:
       type: object
       properties:
@@ -69,21 +77,18 @@ components:
             status:
               type: string
 
+    # ---------- CATEGORIES ----------
     Category:
       type: object
+      description: Category resource returned by the API
       properties:
         id:
           type: string
           format: uuid
         name:
           type: string
-          description: "Category name"
         description:
           type: string
-        attribute_id:
-          type: string
-          format: uuid
-          description: "ID of the associated attribute (if applicable)"
         parentCategory:
           type: string
           format: uuid
@@ -92,15 +97,63 @@ components:
         subcategories:
           type: array
           items:
-            type: string
-            format: uuid
-          description: "List of subcategory IDs"
+            $ref: '#/components/schemas/ObjectId'
+        image:
+          type: string
+          nullable: true
+          description: Relative path stored in DB (e.g., "uploads/categories/file.png")
+          readOnly: true
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Absolute URL for the frontend to render (computed by server)
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    CategoryCreate:
+      type: object
+      description: Multipart form to create a category. Send file under field name "image".
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parentCategory:
+          $ref: '#/components/schemas/ObjectId'
+        image:
+          type: string
+          format: binary
+          description: Image file to upload
+      required: [name]
+
+    CategoryUpdate:
+      type: object
+      description: Multipart form to update a category. Any field is optional; include "image" to replace the existing image.
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parentCategory:
+          $ref: '#/components/schemas/ObjectId'
+        image:
+          type: string
+          format: binary
+          description: New image file to upload (replaces old image)
 
 paths:
+  # ---------- AUTH ----------
   /auth/register:
     post:
-      tags:
-        - Authentication
+      tags: [Authentication]
       summary: Register a new user
       requestBody:
         required: true
@@ -120,11 +173,10 @@ paths:
           description: User created successfully
         '400':
           description: Invalid input
-  
+
   /auth/login:
     post:
-      tags:
-        - Authentication
+      tags: [Authentication]
       summary: Login user
       requestBody:
         required: true
@@ -143,10 +195,10 @@ paths:
         '401':
           description: Invalid credentials
 
+  # ---------- PRODUCTS ----------
   /products:
     get:
-      tags:
-        - Products
+      tags: [Products]
       summary: Get all products
       parameters:
         - in: query
@@ -170,10 +222,9 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Product'
-    
+
     post:
-      tags:
-        - Products
+      tags: [Products]
       summary: Create a new product
       security:
         - BearerAuth: []
@@ -191,10 +242,10 @@ paths:
         '403':
           description: Forbidden - Not a vendor
 
+  # ---------- CATEGORIES ----------
   /categories:
     get:
-      tags:
-        - Categories
+      tags: [Categories]
       summary: Get all categories
       responses:
         '200':
@@ -207,20 +258,23 @@ paths:
                   $ref: '#/components/schemas/Category'
 
     post:
-      tags:
-        - Categories
-      summary: Create a new category
+      tags: [Categories]
+      summary: Create a new category (with optional image upload)
       security:
         - BearerAuth: []
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
-              $ref: '#/components/schemas/Category'
+              $ref: '#/components/schemas/CategoryCreate'
       responses:
         '201':
           description: Category created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
         '400':
           description: Invalid input
         '401':
@@ -230,8 +284,7 @@ paths:
 
   /categories/{id}:
     get:
-      tags:
-        - Categories
+      tags: [Categories]
       summary: Get a category by ID
       parameters:
         - name: id
@@ -248,11 +301,10 @@ paths:
                 $ref: '#/components/schemas/Category'
         '404':
           description: Category not found
-    
+
     put:
-      tags:
-        - Categories
-      summary: Update a category
+      tags: [Categories]
+      summary: Update a category (optionally replace image)
       security:
         - BearerAuth: []
       parameters:
@@ -264,12 +316,16 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
-              $ref: '#/components/schemas/Category'
+              $ref: '#/components/schemas/CategoryUpdate'
       responses:
         '200':
           description: Category updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
         '400':
           description: Invalid input
         '401':
@@ -278,8 +334,7 @@ paths:
           description: Category not found
 
     delete:
-      tags:
-        - Categories
+      tags: [Categories]
       summary: Delete a category
       security:
         - BearerAuth: []
@@ -299,8 +354,7 @@ paths:
 
   /categories/{id}/subcategories:
     get:
-      tags:
-        - Categories
+      tags: [Categories]
       summary: Get subcategories of a category
       parameters:
         - name: id
