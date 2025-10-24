@@ -12,6 +12,8 @@ import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import CategoryPage from './features/category/CategoryPage';
 import AddCategoryPage from './features/category/AddCategoryPage';
+import BrandPage from './features/brand/BrandPage';
+import AddBrandPage from './features/brand/AddBrandPage';
 
 // Create Query Client
 const queryClient = new QueryClient({
@@ -75,8 +77,13 @@ const App = () => {
           }>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
+            {/* Categories */}
             <Route path="/dashboard/categories" element={<CategoryPage />} />
             <Route path="/dashboard/add-category" element={<AddCategoryPage />} />
+
+            {/* Brands */}
+            <Route path="/dashboard/brands" element={<BrandPage />} />
+            <Route path="/dashboard/add-brand" element={<AddBrandPage />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />
           </Route>
 

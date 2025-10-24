@@ -6,10 +6,13 @@ const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
 const specs = require('./src/config/swagger');
 
+require('./models');
+
 // Import routes
 const authRoutes = require('./routes/auth');
 const categoryRoutes = require('./routes/categoryRoutes');
-const userRoutes = require('./routes/userRoutes');
+const brandRoutes = require('./routes/brandRoutes');
+const userRoutes = require('./routes/userRoutes.js');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -51,6 +54,7 @@ mongoose
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/brands', brandRoutes);
 app.use('/api/users', userRoutes);
 
 // Basic route for testing

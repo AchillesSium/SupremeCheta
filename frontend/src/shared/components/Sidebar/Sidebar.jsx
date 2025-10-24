@@ -28,6 +28,7 @@ import {
   Store as VendorsIcon,
   HelpOutline as HelpIcon,
   KeyboardArrowRight,
+  WorkspacePremium as BrandIcon, 
 } from '@mui/icons-material';
 import { styled, alpha } from '@mui/material/styles';
 
@@ -80,6 +81,7 @@ const menuItems = [
   { text: 'Products', icon: <ProductsIcon />, path: '/dashboard/products' },
   { text: 'Customers', icon: <CustomersIcon />, path: '/dashboard/customers' },
   { text: 'Categories', icon: <CategoriesIcon />, path: '/dashboard/categories' },
+  { text: 'Brands', icon: <BrandIcon />, path: '/dashboard/brands' }, 
   { text: 'Inventory', icon: <InventoryIcon />, path: '/dashboard/inventory' },
   { text: 'Vendors', icon: <VendorsIcon />, path: '/dashboard/vendors' },
   { text: 'Analytics', icon: <AnalyticsIcon />, path: '/dashboard/analytics' },

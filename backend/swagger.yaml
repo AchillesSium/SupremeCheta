@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Supreme Cheta API
   description: Multi-vendor E-commerce Platform API
-  version: 1.1.0
+  version: 1.2.0
   contact:
     email: support@supremecheta.com
 
@@ -30,70 +30,49 @@ components:
     User:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        email:
-          type: string
-          format: email
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
         role:
           type: string
           enum: [customer, vendor, admin]
         profile:
           type: object
           properties:
-            firstName:
-              type: string
-            lastName:
-              type: string
-            phone:
-              type: string
-    
+            firstName: { type: string }
+            lastName: { type: string }
+            phone: { type: string }
+
     # ---------- PRODUCTS (unchanged) ----------
     Product:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        price:
-          type: number
-        description:
-          type: string
-        vendorId:
-          type: string
-          format: uuid
+        id: { type: string, format: uuid }
+        name: { type: string }
+        price: { type: number }
+        description: { type: string }
+        vendorId: { type: string, format: uuid }
         category:
           type: array
-          items:
-            type: string
+          items: { type: string }
         inventory:
           type: object
           properties:
-            quantity:
-              type: number
-            status:
-              type: string
+            quantity: { type: number }
+            status: { type: string }
 
     # ---------- CATEGORIES ----------
     Category:
       type: object
       description: Category resource returned by the API
       properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        description:
-          type: string
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
         parentCategory:
           type: string
           format: uuid
           nullable: true
-          description: "Parent category ID (null if main category)"
+          description: Parent category ID (null if main category)
         subcategories:
           type: array
           items:
@@ -101,7 +80,7 @@ components:
         image:
           type: string
           nullable: true
-          description: Relative path stored in DB (e.g., "uploads/categories/file.png")
+          description: Relative path stored in DB (e.g., "/uploads/categories/file.png")
           readOnly: true
         imageUrl:
           type: string
@@ -109,23 +88,15 @@ components:
           nullable: true
           description: Absolute URL for the frontend to render (computed by server)
           readOnly: true
-        createdAt:
-          type: string
-          format: date-time
-          readOnly: true
-        updatedAt:
-          type: string
-          format: date-time
-          readOnly: true
+        createdAt: { type: string, format: date-time, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
 
     CategoryCreate:
       type: object
       description: Multipart form to create a category. Send file under field name "image".
       properties:
-        name:
-          type: string
-        description:
-          type: string
+        name: { type: string }
+        description: { type: string }
         parentCategory:
           $ref: '#/components/schemas/ObjectId'
         image:
@@ -138,16 +109,83 @@ components:
       type: object
       description: Multipart form to update a category. Any field is optional; include "image" to replace the existing image.
       properties:
-        name:
-          type: string
-        description:
-          type: string
+        name: { type: string }
+        description: { type: string }
         parentCategory:
           $ref: '#/components/schemas/ObjectId'
         image:
           type: string
           format: binary
           description: New image file to upload (replaces old image)
+
+    # ---------- BRANDS ----------
+    Brand:
+      type: object
+      description: Brand resource returned by the API
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        logo:
+          type: string
+          nullable: true
+          description: Relative path stored in DB (e.g., "/uploads/brands/file.png")
+          readOnly: true
+        logoUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Absolute URL for the frontend to render (computed by server)
+          readOnly: true
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectId'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectId'
+        createdAt: { type: string, format: date-time, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+
+    BrandCreate:
+      type: object
+      description: Multipart form to create a brand. Send file under field name "logo".
+      properties:
+        name: { type: string }
+        description: { type: string }
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectId'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectId'
+        logo:
+          type: string
+          format: binary
+          description: Image file to upload
+      required: [name]
+
+    BrandUpdate:
+      type: object
+      description: Multipart form to update a brand. Any field is optional; include "logo" to replace the existing image.
+      properties:
+        name: { type: string }
+        description: { type: string }
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectId'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectId'
+        logo:
+          type: string
+          format: binary
+          description: New image file to upload (replaces old logo)
 
 paths:
   # ---------- AUTH ----------
@@ -162,17 +200,12 @@ paths:
             schema:
               type: object
               properties:
-                email:
-                  type: string
-                password:
-                  type: string
-                role:
-                  type: string
+                email: { type: string }
+                password: { type: string }
+                role: { type: string }
       responses:
-        '201':
-          description: User created successfully
-        '400':
-          description: Invalid input
+        '201': { description: User created successfully }
+        '400': { description: Invalid input }
 
   /auth/login:
     post:
@@ -185,15 +218,11 @@ paths:
             schema:
               type: object
               properties:
-                email:
-                  type: string
-                password:
-                  type: string
+                email: { type: string }
+                password: { type: string }
       responses:
-        '200':
-          description: Login successful
-        '401':
-          description: Invalid credentials
+        '200': { description: Login successful }
+        '401': { description: Invalid credentials }
 
   # ---------- PRODUCTS ----------
   /products:
@@ -203,16 +232,13 @@ paths:
       parameters:
         - in: query
           name: page
-          schema:
-            type: integer
+          schema: { type: integer }
         - in: query
           name: limit
-          schema:
-            type: integer
+          schema: { type: integer }
         - in: query
           name: category
-          schema:
-            type: string
+          schema: { type: string }
       responses:
         '200':
           description: List of products
@@ -235,12 +261,9 @@ paths:
             schema:
               $ref: '#/components/schemas/Product'
       responses:
-        '201':
-          description: Product created successfully
-        '401':
-          description: Unauthorized
-        '403':
-          description: Forbidden - Not a vendor
+        '201': { description: Product created successfully }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden - Not a vendor }
 
   # ---------- CATEGORIES ----------
   /categories:
@@ -275,12 +298,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Category'
-        '400':
-          description: Invalid input
-        '401':
-          description: Unauthorized
-        '403':
-          description: Forbidden - Not an admin
+        '400': { description: Invalid input }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden - Not an admin }
 
   /categories/{id}:
     get:
@@ -290,8 +310,7 @@ paths:
         - name: id
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
       responses:
         '200':
           description: Category details
@@ -299,8 +318,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Category'
-        '404':
-          description: Category not found
+        '404': { description: Category not found }
 
     put:
       tags: [Categories]
@@ -311,8 +329,7 @@ paths:
         - name: id
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -326,12 +343,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Category'
-        '400':
-          description: Invalid input
-        '401':
-          description: Unauthorized
-        '404':
-          description: Category not found
+        '400': { description: Invalid input }
+        '401': { description: Unauthorized }
+        '404': { description: Category not found }
 
     delete:
       tags: [Categories]
@@ -342,15 +356,11 @@ paths:
         - name: id
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
       responses:
-        '200':
-          description: Category deleted successfully
-        '404':
-          description: Category not found
-        '403':
-          description: Forbidden - Only admins can delete categories
+        '200': { description: Category deleted successfully }
+        '404': { description: Category not found }
+        '403': { description: Forbidden - Only admins can delete categories }
 
   /categories/{id}/subcategories:
     get:
@@ -360,8 +370,7 @@ paths:
         - name: id
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
       responses:
         '200':
           description: List of subcategories
@@ -371,5 +380,136 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Category'
-        '404':
-          description: Category not found
+        '404': { description: Category not found }
+
+  # ---------- BRANDS ----------
+  /brands:
+    get:
+      tags: [Brands]
+      summary: Get brands (with optional pagination & search)
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 10 }
+        - in: query
+          name: search
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated list of brands
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  page: { type: integer }
+                  limit: { type: integer }
+                  total: { type: integer }
+                  totalPages: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Brand'
+
+    post:
+      tags: [Brands]
+      summary: Create a new brand (with optional logo upload)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BrandCreate'
+      responses:
+        '201':
+          description: Brand created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+        '400': { description: Invalid input }
+        '401': { description: Unauthorized }
+
+  /brands/{id}:
+    get:
+      tags: [Brands]
+      summary: Get a brand by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Brand details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+        '404': { description: Brand not found }
+
+    put:
+      tags: [Brands]
+      summary: Update a brand (optionally replace logo)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BrandUpdate'
+      responses:
+        '200':
+          description: Brand updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+        '400': { description: Invalid input }
+        '401': { description: Unauthorized }
+        '404': { description: Brand not found }
+
+    delete:
+      tags: [Brands]
+      summary: Delete a brand
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Brand deleted successfully }
+        '404': { description: Brand not found }
+
+  /brands/{id}/products:
+    get:
+      tags: [Brands]
+      summary: Get products for a brand
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: List of products for the brand
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+        '404': { description: Brand not found }
