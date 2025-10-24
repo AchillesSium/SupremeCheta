@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Avatar,
   Button,
   Container,
   Box,
@@ -13,12 +14,16 @@ import {
   IconButton,
   Collapse,
   Tooltip,
+  Divider,
 } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import API_BASE_URL from '../../config';
+
+const ORIGIN = new URL(API_BASE_URL).origin;
+const publicUrl = (p) => (!p ? '' : (/^https?:\/\//i.test(p) ? p : `${ORIGIN}/${p.replace(/^\//, '')}`));
 
 const CategoryPage = () => {
   const navigate = useNavigate();
@@ -58,7 +63,6 @@ const CategoryPage = () => {
       if (!byParent.has(parentId)) byParent.set(parentId, []);
       byParent.get(parentId).push(cat);
     }
-    // optional: sort siblings
     for (const [, arr] of byParent) arr.sort((a, b) => a.name.localeCompare(b.name));
     return {
       topLevel: byParent.get(null) || [],
@@ -97,10 +101,7 @@ const CategoryPage = () => {
         throw new Error(`HTTP ${res.status} ${res.statusText} — ${text.slice(0, 160)}…`);
       }
 
-      // Remove the deleted category from local state
       setAllCategories((prev) => prev.filter((c) => c._id !== category._id));
-
-      // Also collapse if it was expanded
       setExpanded((prev) => {
         const next = new Set(prev);
         next.delete(category._id);
@@ -122,41 +123,50 @@ const CategoryPage = () => {
     const hasChildren = children.length > 0;
     const isOpen = expanded.has(category._id);
     const isDeleting = deletingIds.has(category._id);
+    const src = category.imageUrl || publicUrl(category.image);
 
     return (
       <React.Fragment key={category._id}>
-        <ListItem disablePadding sx={{ pl: 2 + depth * 2 }}>
-          <ListItemButton sx={{ display: 'flex', alignItems: 'center' }}>
-            {/* Expand button (visible or invisible placeholder) */}
-            <Box sx={{ width: 32, display: 'flex', justifyContent: 'center' }}>
-              {hasChildren ? (
-                <IconButton
-                  edge="start"
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggle(category._id);
-                  }}
-                >
-                  {isOpen ? <ExpandLess /> : <ExpandMore />}
-                </IconButton>
-              ) : (
-                // Invisible placeholder to align text
-                <Box sx={{ width: 24, height: 24, visibility: 'hidden' }}>
-                  <ExpandMore />
-                </Box>
-              )}
-            </Box>
+        <ListItem disablePadding sx={{ pl: 1 + depth * 2 }}>
+          <ListItemButton
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+            }}
+          >
+            {/* Expand icon */}
+            <IconButton
+              edge="start"
+              size="small"
+              sx={{ mr: 0.5 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggle(category._id);
+              }}
+            >
+              {hasChildren ? (isOpen ? <ExpandLess /> : <ExpandMore />) : <Box sx={{ width: 24 }} />}
+            </IconButton>
 
-            {/* Category text in the middle */}
+            {/* Avatar */}
+            <Avatar
+              src={src || undefined}
+              alt={category.name}
+              variant="rounded"
+              sx={{ width: 40, height: 40 }}
+            >
+              {category.name?.[0]?.toUpperCase() || 'C'}
+            </Avatar>
+
+            {/* Category text */}
             <ListItemText
               primary={category.name}
               secondary={category.description}
+              sx={{ flex: 1, ml: 1 }}
               onClick={() => hasChildren && toggle(category._id)}
-              sx={{ flex: 1 }}
             />
 
-            {/* Edit / Delete actions on the right */}
+            {/* Edit / Delete buttons */}
             <Tooltip title="Edit">
               <span>
                 <IconButton
@@ -166,7 +176,6 @@ const CategoryPage = () => {
                     e.stopPropagation();
                     handleEdit(category);
                   }}
-                  sx={{ ml: 1 }}
                   disabled={isDeleting}
                 >
                   <EditIcon fontSize="small" />
@@ -184,8 +193,8 @@ const CategoryPage = () => {
                     e.stopPropagation();
                     handleDelete(category);
                   }}
-                  sx={{ ml: 1 }}
                   disabled={isDeleting}
+                  sx={{ ml: 0.5 }}
                 >
                   {isDeleting ? <CircularProgress size={16} /> : <DeleteIcon fontSize="small" />}
                 </IconButton>
@@ -201,6 +210,8 @@ const CategoryPage = () => {
             </List>
           </Collapse>
         )}
+
+        {depth === 0 && <Divider component="li" sx={{ my: 0.5 }} />}
       </React.Fragment>
     );
   };

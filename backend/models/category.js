@@ -22,7 +22,15 @@ const categorySchema = new mongoose.Schema(
         ref: 'Category', // Reference to the same Category model
       },
     ],
-    image: { type: String, default: null },
+    image: { 
+      type: String, default: null 
+    },
+    brands: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Brand', // Array of references to Brand documents
+      },
+    ],
   },
   {
     timestamps: true, // Automatically adds createdAt and updatedAt fields
