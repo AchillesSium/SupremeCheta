@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
@@ -17,6 +18,9 @@ const db = process.env.MONGO_URI || 'mongodb://localhost:27017/supreme-cheta';
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// NEW: expose /uploads publicly
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Swagger Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {

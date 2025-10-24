@@ -11,7 +11,6 @@ import {
   Menu,
   Avatar,
   InputBase,
-  Button,
   Tooltip,
   useTheme,
 } from '@mui/material';
@@ -22,8 +21,6 @@ import {
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
   Settings as SettingsIcon,
-  TrendingUp,
-  Mail as MailIcon,
   Email as EmailIcon,
 } from '@mui/icons-material';
 import { styled, alpha } from '@mui/material/styles';
@@ -128,7 +125,7 @@ const Header = ({ open, toggleDrawer, toggleTheme, isDarkMode }) => {
   const theme = useTheme();
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
   const [profileAnchorEl, setProfileAnchorEl] = useState(null);
-  const { logout, user } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
 
   const handleNotificationsOpen = (event) => setNotificationsAnchorEl(event.currentTarget);

@@ -11,11 +11,6 @@ const categorySchema = new mongoose.Schema(
       type: String,
       default: '',
     },
-    attribute_id: {
-      type: mongoose.Schema.Types.ObjectId, // Assuming attributes are stored in another collection
-      ref: 'ProductImage', // Reference to the ProductImage or related collection
-      default: null,
-    },
     parentCategory: {
       type: mongoose.Schema.Types.ObjectId, // Reference to another category (self-referencing)
       ref: 'Category',
@@ -27,6 +22,7 @@ const categorySchema = new mongoose.Schema(
         ref: 'Category', // Reference to the same Category model
       },
     ],
+    image: { type: String, default: null },
   },
   {
     timestamps: true, // Automatically adds createdAt and updatedAt fields
