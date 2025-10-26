@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Supreme Cheta API
   description: Multi-vendor E-commerce Platform API
-  version: 1.2.0
+  version: 1.3.0
   contact:
     email: support@supremecheta.com
 
@@ -11,6 +11,13 @@ servers:
     description: Development server
   - url: https://api.supremecheta.com
     description: Production server
+
+tags:
+  - name: Authentication
+  - name: Products
+  - name: Product Media
+  - name: Categories
+  - name: Brands
 
 components:
   securitySchemes:
@@ -25,6 +32,16 @@ components:
       type: string
       description: MongoDB ObjectId
       example: "652f1c8a2c5d3f0012ab34cd"
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: Something went wrong
 
     # ---------- USERS / AUTH ----------
     User:
@@ -42,150 +59,239 @@ components:
             lastName: { type: string }
             phone: { type: string }
 
-    # ---------- PRODUCTS (unchanged) ----------
+    # ---------- PRODUCT MEDIA ----------
+    ProductMediaKind:
+      type: string
+      enum: [image, video]
+
+    ProductMedia:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/ObjectId' }
+        product_id: { $ref: '#/components/schemas/ObjectId' }
+        kind: { $ref: '#/components/schemas/ProductMediaKind' }
+        url: { type: string, format: uri }
+        title: { type: string, nullable: true }
+        alt: { type: string, nullable: true }
+        mimeType: { type: string, nullable: true }
+        isPrimary: { type: boolean, default: false }
+        sortOrder: { type: integer, default: 0 }
+        attributes:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              value: { type: string }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        provider:
+          type: string
+          nullable: true
+          enum: [self, youtube, vimeo, other]
+        providerId: { type: string, nullable: true }
+        thumbnailUrl: { type: string, format: uri, nullable: true }
+        durationSec: { type: integer, nullable: true }
+        createdAt: { type: string, format: date-time, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+
+    ProductMediaUploadForm:
+      type: object
+      description: Multipart form that accepts images and/or videos. Send files under any of the supported fields.
+      properties:
+        images:
+          type: array
+          items: { type: string, format: binary }
+          description: Array of image files
+        videos:
+          type: array
+          items: { type: string, format: binary }
+          description: Array of video files
+        media:
+          type: array
+          items: { type: string, format: binary }
+          description: Mixed array of image/video files
+        primaryImageIndex:
+          type: integer
+          description: Index (0-based) among received image files to mark as primary
+        primaryVideoIndex:
+          type: integer
+          description: Index (0-based) among received video files to mark as primary
+        sortOrder:
+          type: integer
+        alt:
+          type: string
+        provider:
+          type: string
+          enum: [self, youtube, vimeo, other]
+        providerId:
+          type: string
+        thumbnailUrl:
+          type: string
+          format: uri
+        durationSec:
+          type: integer
+
+    # ---------- PRODUCTS ----------
+    ProductInventory:
+      type: object
+      properties:
+        quantity: { type: number, example: 5 }
+        sku: { type: string, example: "SKU-12345" }
+        status:
+          type: string
+          enum: [in_stock, low_stock, out_of_stock]
+
+    ProductSpecification:
+      type: object
+      properties:
+        name: { type: string }
+        value: { type: string }
+
+    ProductRatings:
+      type: object
+      properties:
+        average: { type: number, minimum: 0, maximum: 5, default: 0 }
+        count: { type: number, default: 0 }
+
+    ProductStatus:
+      type: string
+      enum: [draft, published, archived]
+
     Product:
       type: object
+      description: Product resource returned by the API
       properties:
-        id: { type: string, format: uuid }
+        id: { $ref: '#/components/schemas/ObjectId' }
         name: { type: string }
-        price: { type: number }
         description: { type: string }
-        vendorId: { type: string, format: uuid }
-        category:
+        price: { type: number }
+        categories:
           type: array
-          items: { type: string }
-        inventory:
+          items: { $ref: '#/components/schemas/ObjectId' }
+        brand: { $ref: '#/components/schemas/ObjectId' }
+        vendor: { $ref: '#/components/schemas/ObjectId' }
+        images: # legacy inline images (optional)
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string, format: uri }
+              alt: { type: string }
+        inventory: { $ref: '#/components/schemas/ProductInventory' }
+        specifications:
+          type: array
+          items: { $ref: '#/components/schemas/ProductSpecification' }
+        ratings: { $ref: '#/components/schemas/ProductRatings' }
+        tags:
+          type: array
+          items: { $ref: '#/components/schemas/ObjectId' }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+        createdAt: { type: string, format: date-time, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+
+    ProductCreate:
+      type: object
+      description: JSON body to create a product
+      properties:
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        categories:
+          type: array
+          items: { $ref: '#/components/schemas/ObjectId' }
+        brand: { $ref: '#/components/schemas/ObjectId' }
+        vendor: { $ref: '#/components/schemas/ObjectId' }
+        quantity: { type: number, default: 0 }
+        sku: { type: string }
+        specifications:
+          type: array
+          items: { $ref: '#/components/schemas/ProductSpecification' }
+        tags:
+          type: array
+          items: { $ref: '#/components/schemas/ObjectId' }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+      required: [name, description, price, categories, sku]
+
+    ProductUpdate:
+      type: object
+      description: JSON body to update a product
+      properties:
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        categories:
+          type: array
+          items: { $ref: '#/components/schemas/ObjectId' }
+        brand: { $ref: '#/components/schemas/ObjectId' }
+        quantity: { type: number }
+        sku: { type: string }
+        specifications:
+          type: array
+          items: { $ref: '#/components/schemas/ProductSpecification' }
+        tags:
+          type: array
+          items: { $ref: '#/components/schemas/ObjectId' }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+
+    ProductListResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Product' }
+        pagination:
           type: object
           properties:
-            quantity: { type: number }
-            status: { type: string }
+            page: { type: integer }
+            limit: { type: integer }
+            total: { type: integer }
+            pages: { type: integer }
 
-    # ---------- CATEGORIES ----------
-    Category:
-      type: object
-      description: Category resource returned by the API
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        description: { type: string }
-        parentCategory:
-          type: string
-          format: uuid
-          nullable: true
-          description: Parent category ID (null if main category)
-        subcategories:
-          type: array
-          items:
-            $ref: '#/components/schemas/ObjectId'
-        image:
-          type: string
-          nullable: true
-          description: Relative path stored in DB (e.g., "/uploads/categories/file.png")
-          readOnly: true
-        imageUrl:
-          type: string
-          format: uri
-          nullable: true
-          description: Absolute URL for the frontend to render (computed by server)
-          readOnly: true
-        createdAt: { type: string, format: date-time, readOnly: true }
-        updatedAt: { type: string, format: date-time, readOnly: true }
-
-    CategoryCreate:
-      type: object
-      description: Multipart form to create a category. Send file under field name "image".
-      properties:
-        name: { type: string }
-        description: { type: string }
-        parentCategory:
-          $ref: '#/components/schemas/ObjectId'
-        image:
-          type: string
-          format: binary
-          description: Image file to upload
-      required: [name]
-
-    CategoryUpdate:
-      type: object
-      description: Multipart form to update a category. Any field is optional; include "image" to replace the existing image.
-      properties:
-        name: { type: string }
-        description: { type: string }
-        parentCategory:
-          $ref: '#/components/schemas/ObjectId'
-        image:
-          type: string
-          format: binary
-          description: New image file to upload (replaces old image)
-
-    # ---------- BRANDS ----------
-    Brand:
-      type: object
-      description: Brand resource returned by the API
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        description: { type: string }
-        logo:
-          type: string
-          nullable: true
-          description: Relative path stored in DB (e.g., "/uploads/brands/file.png")
-          readOnly: true
-        logoUrl:
-          type: string
-          format: uri
-          nullable: true
-          description: Absolute URL for the frontend to render (computed by server)
-          readOnly: true
-        products:
-          type: array
-          items:
-            $ref: '#/components/schemas/ObjectId'
-        categories:
-          type: array
-          items:
-            $ref: '#/components/schemas/ObjectId'
-        createdAt: { type: string, format: date-time, readOnly: true }
-        updatedAt: { type: string, format: date-time, readOnly: true }
-
-    BrandCreate:
-      type: object
-      description: Multipart form to create a brand. Send file under field name "logo".
-      properties:
-        name: { type: string }
-        description: { type: string }
-        products:
-          type: array
-          items:
-            $ref: '#/components/schemas/ObjectId'
-        categories:
-          type: array
-          items:
-            $ref: '#/components/schemas/ObjectId'
-        logo:
-          type: string
-          format: binary
-          description: Image file to upload
-      required: [name]
-
-    BrandUpdate:
-      type: object
-      description: Multipart form to update a brand. Any field is optional; include "logo" to replace the existing image.
-      properties:
-        name: { type: string }
-        description: { type: string }
-        products:
-          type: array
-          items:
-            $ref: '#/components/schemas/ObjectId'
-        categories:
-          type: array
-          items:
-            $ref: '#/components/schemas/ObjectId'
-        logo:
-          type: string
-          format: binary
-          description: New image file to upload (replaces old logo)
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, default: 1, minimum: 1 }
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+    SearchQ:
+      in: query
+      name: q
+      schema: { type: string }
+      description: Full-text search string
+    ProductStatus:
+      in: query
+      name: status
+      schema:
+        $ref: '#/components/schemas/ProductStatus'
+    VendorId:
+      in: query
+      name: vendor
+      schema: { $ref: '#/components/schemas/ObjectId' }
+    BrandId:
+      in: query
+      name: brand
+      schema: { $ref: '#/components/schemas/ObjectId' }
+    CategoryIdQuery:
+      in: query
+      name: category
+      schema: { $ref: '#/components/schemas/ObjectId' }
+    MinPrice:
+      in: query
+      name: minPrice
+      schema: { type: number }
+    MaxPrice:
+      in: query
+      name: maxPrice
+      schema: { type: number }
+    Sort:
+      in: query
+      name: sort
+      schema: { type: string, example: "-createdAt" }
 
 paths:
   # ---------- AUTH ----------
@@ -202,7 +308,7 @@ paths:
               properties:
                 email: { type: string }
                 password: { type: string }
-                role: { type: string }
+                role: { type: string, enum: [customer, vendor, admin] }
       responses:
         '201': { description: User created successfully }
         '400': { description: Invalid input }
@@ -228,26 +334,25 @@ paths:
   /products:
     get:
       tags: [Products]
-      summary: Get all products
+      summary: Get products (filter, paginate, search)
       parameters:
-        - in: query
-          name: page
-          schema: { type: integer }
-        - in: query
-          name: limit
-          schema: { type: integer }
-        - in: query
-          name: category
-          schema: { type: string }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/SearchQ'
+        - $ref: '#/components/parameters/ProductStatus'
+        - $ref: '#/components/parameters/VendorId'
+        - $ref: '#/components/parameters/BrandId'
+        - $ref: '#/components/parameters/CategoryIdQuery'
+        - $ref: '#/components/parameters/MinPrice'
+        - $ref: '#/components/parameters/MaxPrice'
+        - $ref: '#/components/parameters/Sort'
       responses:
         '200':
-          description: List of products
+          description: Paginated product list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Product'
+                $ref: '#/components/schemas/ProductListResponse'
 
     post:
       tags: [Products]
@@ -259,11 +364,191 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Product'
+              $ref: '#/components/schemas/ProductCreate'
       responses:
-        '201': { description: Product created successfully }
+        '201':
+          description: Product created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Product' }
         '401': { description: Unauthorized }
         '403': { description: Forbidden - Not a vendor }
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /products/{id}:
+    get:
+      tags: [Products]
+      summary: Get a product by ID (with media)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+      responses:
+        '200':
+          description: Product details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Product' }
+        '404': { description: Product not found }
+    put:
+      tags: [Products]
+      summary: Update a product by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductUpdate' }
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Product' }
+        '400': { description: Invalid input }
+        '401': { description: Unauthorized }
+        '404': { description: Product not found }
+    delete:
+      tags: [Products]
+      summary: Delete a product by ID (and its media)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+      responses:
+        '200': { description: Product deleted successfully }
+        '404': { description: Product not found }
+        '401': { description: Unauthorized }
+
+  # ---------- PRODUCT MEDIA ----------
+  /products/{id}/media:
+    post:
+      tags: [Product Media]
+      summary: Upload images and/or videos for a product
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProductMediaUploadForm'
+      responses:
+        '201':
+          description: Media uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProductMedia' }
+        '400': { description: No files uploaded or invalid input }
+        '401': { description: Unauthorized }
+        '404': { description: Product not found }
+
+    get:
+      tags: [Product Media]
+      summary: List media for a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+      responses:
+        '200':
+          description: List of media items for the product
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProductMedia' }
+
+  /products/{id}/media/{mediaId}/primary:
+    patch:
+      tags: [Product Media]
+      summary: Set a media item as primary (per kind)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+        - name: mediaId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+        - name: kind
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/ProductMediaKind' }
+      responses:
+        '200':
+          description: Primary media set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/ProductMedia' }
+        '400': { description: Invalid kind }
+        '401': { description: Unauthorized }
+        '404': { description: Media not found }
+
+  /products/{id}/media/{mediaId}:
+    delete:
+      tags: [Product Media]
+      summary: Delete a media item
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+        - name: mediaId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+      responses:
+        '200': { description: Media deleted successfully }
+        '401': { description: Unauthorized }
+        '404': { description: Media not found }
 
   # ---------- CATEGORIES ----------
   /categories:
@@ -279,7 +564,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Category'
-
     post:
       tags: [Categories]
       summary: Create a new category (with optional image upload)
@@ -319,7 +603,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Category'
         '404': { description: Category not found }
-
     put:
       tags: [Categories]
       summary: Update a category (optionally replace image)
@@ -346,7 +629,6 @@ paths:
         '400': { description: Invalid input }
         '401': { description: Unauthorized }
         '404': { description: Category not found }
-
     delete:
       tags: [Categories]
       summary: Delete a category
@@ -413,7 +695,6 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Brand'
-
     post:
       tags: [Brands]
       summary: Create a new brand (with optional logo upload)
@@ -452,7 +733,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Brand'
         '404': { description: Brand not found }
-
     put:
       tags: [Brands]
       summary: Update a brand (optionally replace logo)
@@ -479,7 +759,6 @@ paths:
         '400': { description: Invalid input }
         '401': { description: Unauthorized }
         '404': { description: Brand not found }
-
     delete:
       tags: [Brands]
       summary: Delete a brand
