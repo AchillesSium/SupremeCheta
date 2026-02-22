@@ -16,6 +16,7 @@ tags:
   - name: Authentication
   - name: Products
   - name: Product Media
+  - name: Product Tags
   - name: Categories
   - name: Brands
 
@@ -132,6 +133,42 @@ components:
         durationSec:
           type: integer
 
+    # ---------- PRODUCT TAGS ----------
+    ProductTag:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/ObjectId' }
+        tag_name:
+          type: string
+          example: "shoes"
+        product_id: { $ref: '#/components/schemas/ObjectId' }
+        createdAt: { type: string, format: date-time, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+
+    ProductTagCreate:
+      type: object
+      properties:
+        tag_name:
+          type: string
+          example: "shoes"
+      required: [tag_name]
+
+    ProductTagResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        created: { type: boolean, example: true }
+        data: { $ref: '#/components/schemas/ProductTag' }
+
+    ProductTagListResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        results: { type: integer, example: 1 }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/ProductTag' }
+
     # ---------- PRODUCTS ----------
     ProductInventory:
       type: object
@@ -185,7 +222,9 @@ components:
         ratings: { $ref: '#/components/schemas/ProductRatings' }
         tags:
           type: array
-          items: { $ref: '#/components/schemas/ObjectId' }
+          description: Product tags (stored in ProductTag collection)
+          items: { type: string }
+          example: ["shoes", "men", "winter"]
         status: { $ref: '#/components/schemas/ProductStatus' }
         createdAt: { type: string, format: date-time, readOnly: true }
         updatedAt: { type: string, format: date-time, readOnly: true }
@@ -209,7 +248,8 @@ components:
           items: { $ref: '#/components/schemas/ProductSpecification' }
         tags:
           type: array
-          items: { $ref: '#/components/schemas/ObjectId' }
+          items: { type: string }
+          example: ["shoes", "men"]
         status: { $ref: '#/components/schemas/ProductStatus' }
       required: [name, description, price, categories, sku]
 
@@ -231,7 +271,8 @@ components:
           items: { $ref: '#/components/schemas/ProductSpecification' }
         tags:
           type: array
-          items: { $ref: '#/components/schemas/ObjectId' }
+          items: { type: string }
+          example: ["shoes", "men"]
         status: { $ref: '#/components/schemas/ProductStatus' }
 
     ProductListResponse:
@@ -248,6 +289,63 @@ components:
             limit: { type: integer }
             total: { type: integer }
             pages: { type: integer }
+
+    # ---------- CATEGORIES (placeholders, keep/replace with your real ones) ----------
+    Category:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/ObjectId' }
+        name: { type: string }
+        imageUrl: { type: string, nullable: true }
+        parent: { $ref: '#/components/schemas/ObjectId' }
+        createdAt: { type: string, format: date-time, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+
+    CategoryCreate:
+      type: object
+      properties:
+        name: { type: string }
+        parent: { $ref: '#/components/schemas/ObjectId' }
+        image:
+          type: string
+          format: binary
+      required: [name]
+
+    CategoryUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        parent: { $ref: '#/components/schemas/ObjectId' }
+        image:
+          type: string
+          format: binary
+
+    # ---------- BRANDS (placeholders, keep/replace with your real ones) ----------
+    Brand:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/ObjectId' }
+        name: { type: string }
+        logoUrl: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+
+    BrandCreate:
+      type: object
+      properties:
+        name: { type: string }
+        logo:
+          type: string
+          format: binary
+      required: [name]
+
+    BrandUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        logo:
+          type: string
+          format: binary
 
   parameters:
     Page:
@@ -383,6 +481,62 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  # ---------- PRODUCT TAGS ----------
+  /products/{id}/tags:
+    post:
+      tags: [Product Tags]
+      summary: Create a product tag (or return if already exists)
+      description: If the tag already exists for the product, it returns the existing tag. Otherwise, it creates it.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductTagCreate' }
+      responses:
+        '200':
+          description: Tag already existed and was returned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductTagResponse' }
+        '201':
+          description: Tag created successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductTagResponse' }
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { description: Unauthorized }
+
+    get:
+      tags: [Product Tags]
+      summary: Get all tags for a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ObjectId' }
+      responses:
+        '200':
+          description: List of tags for the product
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductTagListResponse' }
+        '400':
+          description: Invalid product id
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /products/{id}:
     get:
       tags: [Products]
@@ -403,6 +557,7 @@ paths:
                   success: { type: boolean }
                   data: { $ref: '#/components/schemas/Product' }
         '404': { description: Product not found }
+
     put:
       tags: [Products]
       summary: Update a product by ID
@@ -431,6 +586,7 @@ paths:
         '400': { description: Invalid input }
         '401': { description: Unauthorized }
         '404': { description: Product not found }
+
     delete:
       tags: [Products]
       summary: Delete a product by ID (and its media)
@@ -564,6 +720,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Category'
+
     post:
       tags: [Categories]
       summary: Create a new category (with optional image upload)
@@ -603,6 +760,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Category'
         '404': { description: Category not found }
+
     put:
       tags: [Categories]
       summary: Update a category (optionally replace image)
@@ -629,6 +787,7 @@ paths:
         '400': { description: Invalid input }
         '401': { description: Unauthorized }
         '404': { description: Category not found }
+
     delete:
       tags: [Categories]
       summary: Delete a category
@@ -695,6 +854,7 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Brand'
+
     post:
       tags: [Brands]
       summary: Create a new brand (with optional logo upload)
@@ -733,6 +893,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Brand'
         '404': { description: Brand not found }
+
     put:
       tags: [Brands]
       summary: Update a brand (optionally replace logo)
@@ -759,6 +920,7 @@ paths:
         '400': { description: Invalid input }
         '401': { description: Unauthorized }
         '404': { description: Brand not found }
+
     delete:
       tags: [Brands]
       summary: Delete a brand

@@ -20,7 +20,9 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate } from 'react-router-dom';
-import API_BASE_URL from '../../config';
+
+import { createBrand, updateBrand } from './brandApi';
+import { getAllCategories } from '../category/categoryApi';
 
 const AddBrandPage = () => {
   const navigate = useNavigate();
@@ -31,7 +33,6 @@ const AddBrandPage = () => {
   const [name, setName] = useState(editingBrand?.name || '');
   const [description, setDescription] = useState(editingBrand?.description || '');
 
-  // Logo file + preview (logo is optional when editing, required when creating)
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(
     editingBrand?.logoUrl || editingBrand?.logo || ''
@@ -42,39 +43,54 @@ const AddBrandPage = () => {
     const cats = editingBrand?.categories || [];
     return cats.map((c) => (typeof c === 'object' ? c._id : c)).filter(Boolean);
   }, [editingBrand]);
+
   const [categoryIds, setCategoryIds] = useState(initialCategories);
   const [categories, setCategories] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [catError, setCatError] = useState('');
-  const [catMenuOpen, setCatMenuOpen] = useState(false); // <-- controls dropdown open/close
+  const [catMenuOpen, setCatMenuOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [attachCategories, setAttachCategories] = useState(categoryIds.length > 0);
 
   useEffect(() => {
+    return () => {
+      if (logoPreview?.startsWith('blob:')) URL.revokeObjectURL(logoPreview);
+    };
+  }, [logoPreview]);
+
+  useEffect(() => {
     if (!attachCategories) return;
+
+    const controller = new AbortController();
+
     (async () => {
       setLoadingCategories(true);
       setCatError('');
       try {
-        const res = await fetch(`${API_BASE_URL}/categories`);
-        if (!res.ok) throw new Error('Failed to load categories');
-        const data = await res.json();
+        const data = await getAllCategories();
+        if (controller.signal.aborted) return;
+
         const arr = Array.isArray(data.categories) ? data.categories : [];
         arr.sort((a, b) => a.name.localeCompare(b.name));
         setCategories(arr);
       } catch (e) {
-        setCatError(e.message || 'Failed to load categories');
+        if (!controller.signal.aborted) setCatError(e.message || 'Failed to load categories');
       } finally {
-        setLoadingCategories(false);
+        if (!controller.signal.aborted) setLoadingCategories(false);
       }
     })();
+
+    return () => controller.abort();
   }, [attachCategories]);
 
   const onPickLogo = (e) => {
     const file = e.target.files?.[0];
     setLogoFile(file || null);
+
+    if (logoPreview?.startsWith('blob:')) URL.revokeObjectURL(logoPreview);
+
     if (file) {
       setLogoPreview(URL.createObjectURL(file));
     } else {
@@ -87,26 +103,23 @@ const AddBrandPage = () => {
     setSaving(true);
     setError('');
 
-    const url = isEdit
-      ? `${API_BASE_URL}/brands/${editingBrand._id}`
-      : `${API_BASE_URL}/brands`;
-    const method = isEdit ? 'PUT' : 'POST';
-
     const form = new FormData();
     form.append('name', name);
     form.append('description', description);
+
     if (attachCategories && categoryIds.length) {
       categoryIds.forEach((id) => form.append('categories', id));
     }
+
     if (logoFile) {
       form.append('logo', logoFile);
     }
 
     try {
-      const res = await fetch(url, { method, body: form });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status} ${res.statusText} — ${text.slice(0, 160)}…`);
+      if (isEdit) {
+        await updateBrand(editingBrand._id, form);
+      } else {
+        await createBrand(form);
       }
       navigate('/dashboard/brands');
     } catch (err) {
@@ -161,6 +174,7 @@ const AddBrandPage = () => {
           <Typography variant="subtitle2" sx={{ mb: 1 }}>
             Brand Logo
           </Typography>
+
           {logoPreview && (
             <Box sx={{ mb: 1 }}>
               {/* eslint-disable-next-line jsx-a11y/alt-text */}
@@ -170,6 +184,7 @@ const AddBrandPage = () => {
               />
             </Box>
           )}
+
           <Button variant="outlined" component="label">
             {logoFile ? 'Change Logo' : (logoPreview ? 'Replace Logo' : 'Upload Logo')}
             <input
@@ -179,6 +194,7 @@ const AddBrandPage = () => {
               onChange={onPickLogo}
             />
           </Button>
+
           {!isEdit && !logoFile && (
             <FormHelperText sx={{ ml: 1, mt: 0.5 }}>
               Logo is required for new brands
@@ -203,11 +219,7 @@ const AddBrandPage = () => {
         />
 
         {attachCategories && (
-          <FormControl
-            fullWidth
-            margin="normal"
-            disabled={loadingCategories || !!catError}
-          >
+          <FormControl fullWidth margin="normal" disabled={loadingCategories || !!catError}>
             <InputLabel id="brand-categories-label">Categories</InputLabel>
             <Select
               labelId="brand-categories-label"
@@ -219,11 +231,7 @@ const AddBrandPage = () => {
               open={catMenuOpen}
               onOpen={() => setCatMenuOpen(true)}
               onClose={() => setCatMenuOpen(false)}
-              MenuProps={{
-                PaperProps: {
-                  sx: { maxHeight: 360 },
-                },
-              }}
+              MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
               renderValue={(selected) => (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                   {selected.map((id) => {
@@ -238,7 +246,9 @@ const AddBrandPage = () => {
                   <CircularProgress size={18} sx={{ mr: 1 }} /> Loading…
                 </MenuItem>
               )}
+
               {catError && <MenuItem disabled>Error loading categories</MenuItem>}
+
               {!loadingCategories &&
                 !catError &&
                 categories.map((c) => (
@@ -262,17 +272,12 @@ const AddBrandPage = () => {
                 }}
               >
                 <Box sx={{ width: '100%', textAlign: 'right' }}>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    onClick={() => setCatMenuOpen(false)}
-                  >
+                  <Button size="small" variant="contained" onClick={() => setCatMenuOpen(false)}>
                     Done
                   </Button>
                 </Box>
               </MenuItem>
             </Select>
-            {/* Categories optional → no error text */}
           </FormControl>
         )}
 

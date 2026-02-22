@@ -18,7 +18,8 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate, useLocation } from 'react-router-dom';
-import API_BASE_URL from '../../config';
+
+import { getAllCategories, createCategory, updateCategory } from './categoryApi';
 
 const AddCategoryPage = () => {
   const navigate = useNavigate();
@@ -53,22 +54,21 @@ const AddCategoryPage = () => {
   useEffect(() => {
     const shouldFetch = isSubCategory || isEdit;
     if (!shouldFetch) return;
+
     (async () => {
       setLoadingParents(true);
       setParentLoadError('');
       try {
-        const res = await fetch(`${API_BASE_URL}/categories`);
-        if (!res.ok) throw new Error('Failed to load categories');
+        // ONLY CHANGE: use api function
+        const data = await getAllCategories();
 
-        const data = await res.json();
         const all = Array.isArray(data.categories) ? data.categories : [];
-        // Prevent choosing itself as parent
         const filtered = isEdit ? all.filter((c) => c._id !== editingCategory._id) : all;
         filtered.sort((a, b) => a.name.localeCompare(b.name));
+
         setParentOptions(filtered);
-        if (initialParentId) {
-          setParentCategory(initialParentId);
-        }
+
+        if (initialParentId) setParentCategory(initialParentId);
       } catch (e) {
         setParentLoadError(e.message || 'Failed to load categories');
       } finally {
@@ -94,33 +94,27 @@ const AddCategoryPage = () => {
     setSaving(true);
     setError('');
 
-    const url = isEdit
-      ? `${API_BASE_URL}/categories/${editingCategory._id}`
-      : `${API_BASE_URL}/categories`;
     const method = isEdit ? 'PUT' : 'POST';
 
     // IMPORTANT: use FormData for multipart/form-data
     const form = new FormData();
     form.append('name', name);
     form.append('description', description);
+
     if (isSubCategory && parentCategory) {
       form.append('parentCategory', parentCategory);
-    } else {
-      // omit parent if not a subcategory (backend treats missing as null)
     }
+
     if (imageFile) {
       form.append('image', imageFile); // field name must match upload.single('image')
     }
 
     try {
-      const res = await fetch(url, {
-        method,
-        body: form, // do NOT set Content-Type; browser sets boundary automatically
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status} ${res.statusText} — ${text.slice(0, 160)}…`);
+      // ONLY CHANGE: use api function
+      if (method === 'PUT') {
+        await updateCategory(editingCategory._id, form);
+      } else {
+        await createCategory(form);
       }
 
       navigate('/dashboard/categories');
@@ -187,7 +181,7 @@ const AddCategoryPage = () => {
             </Box>
           )}
           <Button variant="outlined" component="label">
-            {imageFile ? 'Change Image' : (imagePreview ? 'Replace Image' : 'Upload Image')}
+            {imageFile ? 'Change Image' : imagePreview ? 'Replace Image' : 'Upload Image'}
             <input
               hidden
               type="file"
