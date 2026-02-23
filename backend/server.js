@@ -1,8 +1,15 @@
 require('dotenv').config();
+
+// Validate environment variables FIRST (before anything else)
+const validateEnv = require('./src/config/validateEnv');
+validateEnv();
+
 const express = require('express');
 const path = require('path');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
 const swaggerUi = require('swagger-ui-express');
 const specs = require('./src/config/swagger');
 
@@ -17,6 +24,10 @@ const userRoutes = require('./routes/userRoutes.js');
 const app = express();
 const PORT = process.env.PORT || 5001;
 const db = process.env.MONGO_URI || 'mongodb://localhost:27017/supreme-cheta';
+
+// Security middleware
+app.use(helmet());
+app.use(mongoSanitize());
 
 // Middleware
 app.use(cors());
