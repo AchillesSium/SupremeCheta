@@ -1,3 +1,4 @@
+// src/features/product/AddEditProductPage.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -22,7 +23,14 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { createProduct, updateProduct } from './productApi';
+import {
+  createProduct,
+  updateProduct,
+  createOrGetProductTag,     // POST /api/products/tags
+  updateProductTagProductId, // PUT  /api/products/tags/:tagId   (attach product_id)
+  detachProductFromTag,      // ✅ DELETE /api/products/tags/:tagId/product/:productId
+} from './productApi';
+
 import { getAllCategories } from '../category/categoryApi';
 import { getAllBrands } from '../brand/brandApi';
 
@@ -41,16 +49,13 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
   const [sku, setSku] = useState(product?.inventory?.sku || '');
   const [quantity, setQuantity] = useState(product?.inventory?.quantity ?? 0);
 
-  // Tags still as comma-separated text (unchanged)
-  const [tagsText, setTagsText] = useState('');
-
-  // NEW: dropdown data
+  // Lookups
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
   const [loadingLookups, setLoadingLookups] = useState(true);
   const [lookupError, setLookupError] = useState('');
 
-  // NEW: selected values
+  // Selected values
   const initialBrandId =
     product?.brand && typeof product.brand === 'object' ? product.brand._id : product?.brand || '';
 
@@ -62,13 +67,107 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
   const [categoryIds, setCategoryIds] = useState(initialCategoryIds);
   const [catMenuOpen, setCatMenuOpen] = useState(false);
 
-  // Specifications array UI (unchanged)
+  // Specs UI
   const [specs, setSpecs] = useState(() => {
     const s = Array.isArray(product?.specifications) ? product.specifications : [];
     return s.length ? s.map((x) => ({ name: x.name || '', value: x.value || '' })) : [emptySpec];
   });
 
-  // Sync form fields if product changes (edit)
+  // ----------------------------
+  // TAGS UI: input + add + chips
+  // ----------------------------
+  const [tagInput, setTagInput] = useState('');
+  const [tagItems, setTagItems] = useState(() => {
+    const t = Array.isArray(product?.tags) ? product.tags : [];
+    return t
+      .map((x) => {
+        const id = typeof x === 'object' ? (x._id || x.id) : x;
+        const tagName = typeof x === 'object' ? (x.tag_name || x.name || '') : '';
+        return id ? { _id: id, name: tagName } : null;
+      })
+      .filter(Boolean);
+  });
+
+  const [tagError, setTagError] = useState('');
+  const [tagAdding, setTagAdding] = useState(false);
+  const [tagDeletingIds, setTagDeletingIds] = useState(() => new Set());
+
+  const normalizedTagInput = useMemo(() => tagInput.trim().toLowerCase(), [tagInput]);
+  const canAddTag = !!normalizedTagInput && !tagAdding;
+
+  // product id: in edit mode we have product._id, in create mode product doesn't exist yet
+  const productIdForDetach = isEdit ? product?._id : null;
+
+  const handleAddTag = async () => {
+    const tagName = normalizedTagInput;
+    if (!tagName) return;
+
+    // prevent duplicates (by name)
+    const exists = tagItems.some((t) => (t.name || '').toLowerCase() === tagName);
+    if (exists) {
+      setTagInput('');
+      return;
+    }
+
+    try {
+      setTagAdding(true);
+      setTagError('');
+
+      // product_id optional in your API
+      const res = await createOrGetProductTag({
+        tag_name: tagName,
+        // If you WANT to attach immediately in edit mode, you can pass product_id here:
+        // product_id: productIdForDetach || undefined,
+      });
+
+      const id = res?.data?._id || res?.data?.id;
+      const apiName = res?.data?.tag_name || res?.data?.name || tagName;
+
+      if (!id) throw new Error('Tag created but no tag id returned.');
+
+      setTagItems((prev) => [...prev, { _id: id, name: apiName }]);
+      setTagInput('');
+    } catch (e) {
+      setTagError(e?.message || 'Failed to add tag');
+    } finally {
+      setTagAdding(false);
+    }
+  };
+
+  const handleRemoveTag = async (tagId) => {
+    // Optimistically remove from UI
+    const removed = tagItems.find((t) => t._id === tagId);
+    setTagItems((prev) => prev.filter((t) => t._id !== tagId));
+
+    // If product id exists (edit mode), call backend to detach
+    if (!productIdForDetach) return;
+
+    try {
+      setTagError('');
+      setTagDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.add(tagId);
+        return next;
+      });
+
+      await detachProductFromTag(tagId, productIdForDetach);
+
+      // refresh product cache if you have it
+      await qc.invalidateQueries({ queryKey: ['product', productIdForDetach] });
+    } catch (e) {
+      // rollback on failure
+      setTagItems((prev) => (removed ? [...prev, removed] : prev));
+      setTagError(e?.message || 'Failed to remove tag from product');
+    } finally {
+      setTagDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(tagId);
+        return next;
+      });
+    }
+  };
+
+  // Sync on edit
   useEffect(() => {
     if (!isEdit || !product?._id) return;
 
@@ -82,16 +181,28 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
     const s = Array.isArray(product.specifications) ? product.specifications : [];
     setSpecs(s.length ? s.map((x) => ({ name: x.name || '', value: x.value || '' })) : [emptySpec]);
 
-    const b = product?.brand && typeof product.brand === 'object' ? product.brand._id : product?.brand || '';
+    const b =
+      product?.brand && typeof product.brand === 'object' ? product.brand._id : product?.brand || '';
     setBrandId(b || '');
 
     const cats = Array.isArray(product?.categories)
       ? product.categories.map((c) => (typeof c === 'object' ? c._id : c)).filter(Boolean)
       : [];
     setCategoryIds(cats);
+
+    // sync tags
+    const t = Array.isArray(product?.tags) ? product.tags : [];
+    const mappedTags = t
+      .map((x) => {
+        const id = typeof x === 'object' ? (x._id || x.id) : x;
+        const tagName = typeof x === 'object' ? (x.tag_name || x.name || '') : '';
+        return id ? { _id: id, name: tagName } : null;
+      })
+      .filter(Boolean);
+    setTagItems(mappedTags);
   }, [isEdit, product]);
 
-  // NEW: fetch categories + brands for dropdowns
+  // Fetch categories + brands
   useEffect(() => {
     const controller = new AbortController();
 
@@ -127,49 +238,69 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
     return () => controller.abort();
   }, []);
 
-  const payload = useMemo(() => {
-    const tags = tagsText
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean);
-
+  const basePayload = useMemo(() => {
     const specifications = specs
       .map((s) => ({ name: s.name.trim(), value: s.value.trim() }))
       .filter((s) => s.name && s.value);
+
+    const tagIds = tagItems.map((t) => t._id).filter(Boolean);
 
     return {
       name: name.trim(),
       description: description.trim(),
       price: Number(price),
 
-      // NEW: dropdown selections
-      categories: categoryIds, // array of category ids
-      brand: brandId || undefined, // single brand id
+      categories: categoryIds,
+      brand: brandId || undefined,
 
-      // keep same fields you already send
-      tags,
-      inventory: undefined, // handled by controller fields
+      // TAG IDS gathered during add-tag calls
+      tags: tagIds,
+
       quantity: Number(quantity),
       sku: sku.trim(),
       specifications,
       status,
     };
-  }, [name, description, price, status, sku, quantity, specs, tagsText, categoryIds, brandId]);
+  }, [name, description, price, status, sku, quantity, specs, categoryIds, brandId, tagItems]);
 
   const mutation = useMutation({
     mutationFn: async () => {
-      if (isEdit) return updateProduct(product._id, payload);
-      return createProduct(payload);
+      // 1) Create or Update product first
+      const productRes = isEdit
+        ? await updateProduct(product._id, basePayload)
+        : await createProduct(basePayload);
+  
+      const productId =
+        (isEdit ? product?._id : null) ||
+        productRes?.data?._id ||
+        productRes?.data?.id;
+  
+      if (!productId) return productRes;
+  
+      // 2) Attach product_id to each selected tag (for BOTH create & update)
+      const tagIds = tagItems.map((t) => t._id).filter(Boolean);
+  
+      if (tagIds.length) {
+        await Promise.all(
+          tagIds.map((tagId) => updateProductTagProductId(tagId, { product_id: productId }))
+        );
+      }
+  
+      return productRes;
     },
+  
     onSuccess: async (res) => {
       await qc.invalidateQueries({ queryKey: ['products'] });
-
+  
+      const productId = isEdit
+        ? product?._id
+        : res?.data?._id || res?.data?.id;
+  
       if (isEdit) {
-        await qc.invalidateQueries({ queryKey: ['product', product._id] });
+        await qc.invalidateQueries({ queryKey: ['product', productId] });
         navigate('/dashboard/products');
       } else {
-        const newId = res?.data?._id;
-        if (newId) navigate(`/dashboard/products/${newId}`);
+        if (productId) navigate(`/dashboard/products/${productId}`);
         else navigate('/dashboard/products');
       }
     },
@@ -180,8 +311,8 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
     description.trim() &&
     String(price).trim() !== '' &&
     sku.trim() &&
-    categoryIds.length > 0 && // require at least 1 category
-    brandId && // require brand
+    categoryIds.length > 0 &&
+    brandId &&
     !Number.isNaN(Number(price)) &&
     !Number.isNaN(Number(quantity));
 
@@ -262,7 +393,6 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
 
           <Divider />
 
-          {/* NEW: Brand dropdown */}
           <FormControl fullWidth required disabled={loadingLookups || !!lookupError}>
             <InputLabel id="brand-label">Brand</InputLabel>
             <Select
@@ -279,7 +409,6 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
             </Select>
           </FormControl>
 
-          {/* NEW: Categories dropdown (multi) */}
           <FormControl fullWidth required disabled={loadingLookups || !!lookupError}>
             <InputLabel id="categories-label">Categories</InputLabel>
             <Select
@@ -292,9 +421,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
               open={catMenuOpen}
               onOpen={() => setCatMenuOpen(true)}
               onClose={() => setCatMenuOpen(false)}
-              MenuProps={{
-                PaperProps: { sx: { maxHeight: 360 } },
-              }}
+              MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
               renderValue={(selected) => (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                   {selected.map((id) => {
@@ -311,7 +438,6 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
                 </MenuItem>
               ))}
 
-              {/* Sticky footer with Done button */}
               <MenuItem
                 disableRipple
                 disableTouchRipple
@@ -335,16 +461,66 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
 
           <Divider />
 
-          {/* Tags kept same text input */}
+          {/* ---------------- */}
+          {/* TAGS (new UI)    */}
+          {/* ---------------- */}
           <Typography variant="subtitle1" fontWeight={600}>
-            Tags (comma-separated IDs for demo)
+            Tags
           </Typography>
-          <TextField
-            placeholder="e.g. 65aa..., 65ab..."
-            value={tagsText}
-            onChange={(e) => setTagsText(e.target.value)}
-            fullWidth
-          />
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+            <TextField
+              label="Tag"
+              placeholder="e.g. shoes"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              fullWidth
+              disabled={tagAdding}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (canAddTag) handleAddTag();
+                }
+              }}
+            />
+
+            <Button
+              variant="contained"
+              onClick={handleAddTag}
+              disabled={!canAddTag}
+              sx={{ minWidth: 120 }}
+            >
+              {tagAdding ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <CircularProgress size={16} /> Adding…
+                </span>
+              ) : (
+                'Add'
+              )}
+            </Button>
+          </Stack>
+
+          {tagError && <Typography color="error">{tagError}</Typography>}
+
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+            {tagItems.map((t) => {
+              const deleting = tagDeletingIds.has(t._id);
+              return (
+                <Chip
+                  key={t._id}
+                  label={t.name || t._id}
+                  onDelete={deleting ? undefined : () => handleRemoveTag(t._id)}
+                  variant="outlined"
+                  sx={{ borderRadius: 999, opacity: deleting ? 0.6 : 1 }}
+                  deleteIcon={
+                    deleting ? (
+                      <CircularProgress size={16} />
+                    ) : undefined
+                  }
+                />
+              );
+            })}
+          </Box>
 
           <Divider />
 
@@ -353,7 +529,12 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
           </Typography>
 
           {specs.map((s, idx) => (
-            <Stack key={idx} direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+            <Stack
+              key={idx}
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={2}
+              alignItems="center"
+            >
               <TextField
                 label="Name"
                 value={s.name}
@@ -374,7 +555,6 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
                 }}
                 fullWidth
               />
-
               <Button
                 variant="outlined"
                 color="error"
@@ -410,8 +590,10 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <CircularProgress size={16} /> Saving…
                 </span>
+              ) : isEdit ? (
+                'Update'
               ) : (
-                (isEdit ? 'Update' : 'Create')
+                'Create'
               )}
             </Button>
 

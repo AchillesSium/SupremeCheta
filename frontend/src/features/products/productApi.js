@@ -41,3 +41,44 @@ export function updateProduct(id, payload) {
     body: JSON.stringify(payload),
   });
 }
+
+/**
+ * 1) Create/Get Product Tag FIRST (product_id OPTIONAL)
+ * Backend route:
+ *    POST /api/products/tags
+ * body: { tag_name: "shoes", product_id?: "<optional>" }
+ */
+export function createOrGetProductTag(body) {
+  return fetchJson(`${API_BASE_URL}/products/tags`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * 3) After product created, attach product to tag (product_id REQUIRED)
+ * Backend route:
+ *    PUT /api/products/tags/:tagId
+ * body: { product_id: "<newProductId>" }
+ */
+export function updateProductTagProductId(tagId, body) {
+  return fetchJson(`${API_BASE_URL}/products/tags/${tagId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Detach product from tag (remove productId from ProductTag.product_ids
+ * and remove tagId from Product.tags)
+ * Backend route:
+ *    DELETE /api/products/tags/:tagId/product/:productId
+ */
+export function detachProductFromTag(tagId, productId) {
+  return fetchJson(`${API_BASE_URL}/products/tags/${tagId}/product/${productId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+}

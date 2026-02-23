@@ -74,8 +74,8 @@ exports.createProduct = async (req, res) => {
     const tags = normalizeIds(body.tags);
 
     // specs can arrive as:
-// - array/object in JSON
-// - stringified JSON in multipart
+    // - array/object in JSON
+    // - stringified JSON in multipart
     const specificationsRaw = parseMaybeJson(body.specifications, []);
     const specifications = asArray(specificationsRaw)
       .map((s) => ({
@@ -188,7 +188,6 @@ exports.updateProduct = async (req, res) => {
     }
 
     const body = req.body || {};
-
     const update = {};
 
     if (body.name !== undefined) update.name = body.name;
@@ -215,8 +214,9 @@ exports.updateProduct = async (req, res) => {
         .filter((s) => s.name.trim() && s.value.trim());
     }
 
-    const product = await Product.findByIdAndUpdate(req.params.id, update, { new: true })
-      .populate(['categories', 'brand', 'vendor', 'tags']);
+    const product = await Product.findByIdAndUpdate(req.params.id, update, { new: true }).populate(
+      ['categories', 'brand', 'vendor', 'tags']
+    );
 
     if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
     res.json({ success: true, data: product });
@@ -239,11 +239,7 @@ exports.deleteProduct = async (req, res) => {
     const medias = await ProductMedia.find({ product_id: doc._id });
     for (const m of medias) {
       if (m.url?.startsWith('http')) continue; // remote CDN
-      const filePath = path.join(
-        process.cwd(),
-        'backend',
-        m.url.replace(/^.*\/uploads\//, 'uploads/')
-      );
+      const filePath = path.join(process.cwd(), 'backend', m.url.replace(/^.*\/uploads\//, 'uploads/'));
       if (fs.existsSync(filePath)) {
         try {
           fs.unlinkSync(filePath);
@@ -365,11 +361,7 @@ exports.deleteMedia = async (req, res) => {
 
     // Remove local file if local (in case you ever store relative)
     if (media.url && !/^https?:\/\//.test(media.url)) {
-      const filePath = path.join(
-        process.cwd(),
-        'backend',
-        media.url.replace(/^.*\/uploads\//, 'uploads/')
-      );
+      const filePath = path.join(process.cwd(), 'backend', media.url.replace(/^.*\/uploads\//, 'uploads/'));
       if (fs.existsSync(filePath)) {
         try {
           fs.unlinkSync(filePath);
@@ -386,44 +378,49 @@ exports.deleteMedia = async (req, res) => {
   }
 };
 
-// POST /api/products/:id/tags
-// body: { tag_name: "shoes" }
+/* ========= TAGS ========= */
+
 exports.createOrGetProductTag = async (req, res) => {
   try {
-    const productId = req.params.id;
-
-    if (!mongoose.isValidObjectId(productId)) {
-      return res.status(400).json({ success: false, message: 'Invalid product id' });
-    }
-
     const tagName = (req.body?.tag_name || '').toString().trim().toLowerCase();
+    const productId = req.body?.product_id ? String(req.body.product_id).trim() : null;
+
     if (!tagName) {
       return res.status(400).json({ success: false, message: 'tag_name is required' });
     }
 
-    // 1) find existing
-    const existing = await ProductTag.findOne({
-      product_id: productId,
-      tag_name: tagName,
-    });
-
-    if (existing) {
-      return res.status(200).json({ success: true, data: existing, created: false });
+    // product_id is OPTIONAL in POST
+    if (productId && !mongoose.isValidObjectId(productId)) {
+      return res.status(400).json({ success: false, message: 'Invalid product_id' });
     }
 
-    // 2) create if not found
-    const created = await ProductTag.create({
-      product_id: productId,
-      tag_name: tagName,
-    });
+    // Create if not exists (unique tag_name)
+    // If productId exists, add it to product_ids (no duplicates)
+    const update = productId ? { $addToSet: { product_ids: productId } } : {};
+    const tag = await ProductTag.findOneAndUpdate(
+      { tag_name: tagName },
+      update,
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
 
-    return res.status(201).json({ success: true, data: created, created: true });
+    // Determine if created or existing (basic heuristic)
+    // If you want exact "created" flag, you can use rawResult option.
+    return res.status(200).json({ success: true, data: tag });
   } catch (err) {
+    // Duplicate key (unique tag_name) edge-case race
+    if (err?.code === 11000) {
+      const tagName = (req.body?.tag_name || '').toString().trim().toLowerCase();
+      const tag = await ProductTag.findOne({ tag_name: tagName });
+      return res.status(200).json({ success: true, data: tag });
+    }
     return res.status(400).json({ success: false, message: err.message });
   }
 };
 
-// GET /api/products/:id/tags
+// GET /api/products/:id/tags?scope=product|global|all
+// - product (default): only tags linked to this product_id
+// - global: only tags with product_id = null
+// - all: both
 exports.getProductTags = async (req, res) => {
   try {
     const productId = req.params.id;
@@ -432,7 +429,36 @@ exports.getProductTags = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid product id' });
     }
 
-    const tags = await ProductTag.find({ product_id: productId }).sort({ createdAt: -1 });
+    const scope = (req.query.scope || 'product').toString().toLowerCase();
+
+    const query = {};
+    if (scope === 'global') {
+      query.product_id = null;
+    } else if (scope === 'all') {
+      query.$or = [{ product_id: productId }, { product_id: null }];
+    } else {
+      // default "product"
+      query.product_id = productId;
+    }
+
+    const tags = await ProductTag.find(query).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      results: tags.length,
+      data: tags,
+      scope,
+    });
+  } catch (err) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+/// GET /api/products/tags
+// Returns ALL tags (global + product-specific). No query params.
+exports.getAllProductTags = async (req, res) => {
+  try {
+    const tags = await ProductTag.find({}).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -444,3 +470,127 @@ exports.getProductTags = async (req, res) => {
   }
 };
 
+// PUT /api/products/tags/:tagId
+// Body: { product_id: "..." }
+// product_id is REQUIRED
+exports.attachProductToTag = async (req, res) => {
+  try {
+    const { tagId } = req.params;
+    const productId = req.body?.product_id
+      ? String(req.body.product_id).trim()
+      : '';
+
+    // Validate tag id
+    if (!mongoose.isValidObjectId(tagId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid tag id',
+      });
+    }
+
+    // product_id REQUIRED
+    if (!productId) {
+      return res.status(400).json({
+        success: false,
+        message: 'product_id is required',
+      });
+    }
+
+    if (!mongoose.isValidObjectId(productId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid product_id',
+      });
+    }
+
+    // Check product exists
+    const productExists = await Product.exists({ _id: productId });
+    if (!productExists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    // Update tag → add product to product_ids
+    const updatedTag = await ProductTag.findByIdAndUpdate(
+      tagId,
+      { $addToSet: { product_ids: productId } },
+      { new: true }
+    );
+
+    if (!updatedTag) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tag not found',
+      });
+    }
+
+    // Optional but recommended:
+    // Also attach tag to product.tags field
+    await Product.findByIdAndUpdate(
+      productId,
+      { $addToSet: { tags: tagId } }
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: updatedTag,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+// DELETE /api/products/tags/:tagId/product/:productId
+exports.detachProductFromTag = async (req, res) => {
+  try {
+    const { tagId, productId } = req.params;
+
+    // Validate ids
+    if (!mongoose.isValidObjectId(tagId)) {
+      return res.status(400).json({ success: false, message: 'Invalid tag id' });
+    }
+    if (!mongoose.isValidObjectId(productId)) {
+      return res.status(400).json({ success: false, message: 'Invalid product id' });
+    }
+
+    // Optional: check existence (nice errors)
+    const [tagExists, productExists] = await Promise.all([
+      ProductTag.exists({ _id: tagId }),
+      Product.exists({ _id: productId }),
+    ]);
+
+    if (!tagExists) {
+      return res.status(404).json({ success: false, message: 'Tag not found' });
+    }
+    if (!productExists) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    // 1) Remove product from tag.product_ids
+    const updatedTag = await ProductTag.findByIdAndUpdate(
+      tagId,
+      { $pull: { product_ids: productId } },
+      { new: true }
+    );
+
+    // 2) Remove tag from product.tags (recommended since you also add it on attach)
+    await Product.findByIdAndUpdate(
+      productId,
+      { $pull: { tags: tagId } },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: updatedTag,
+      message: 'Product detached from tag',
+    });
+  } catch (err) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+};
