@@ -2,27 +2,48 @@ const mongoose = require('mongoose');
 
 const auditLogSchema = new mongoose.Schema(
   {
-    user_id: {
-      type: mongoose.Schema.Types.ObjectId, // Reference to the User collection
-      ref: 'User', // Assumes there is a User model
-      required: true,
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false, // Optional - some actions may not have a user
     },
     action: {
       type: String,
       required: true,
-      enum: ['create', 'update', 'delete', 'read'], // Example actions
     },
+    ipAddress: {
+      type: String,
+      required: false,
+    },
+    userAgent: {
+      type: String,
+      required: false,
+    },
+    fingerprint: {
+      type: String,
+      required: false,
+    },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    severity: {
+      type: String,
+      enum: ['info', 'warning', 'error', 'critical'],
+      default: 'info',
+    },
+    // Keep old fields for backward compatibility
     table_name: {
       type: String,
-      required: true,
+      required: false,
     },
     record_id: {
-      type: String, // ID of the affected record
-      required: true,
+      type: String,
+      required: false,
     },
   },
   {
-    timestamps: true, 
+    timestamps: true,
   }
 );
 

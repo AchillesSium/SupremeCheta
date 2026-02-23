@@ -2,32 +2,56 @@ const mongoose = require('mongoose');
 
 const userSessionSchema = new mongoose.Schema(
   {
-    user_id: {
-      type: mongoose.Schema.Types.ObjectId, // Reference to the User collection
-      ref: 'User', // Assumes there is a User model
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
       required: true,
     },
-    ip_address: {
+    refreshToken: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    fingerprint: {
+      type: String,
+      required: false,
+    },
+    ipAddress: {
       type: String,
       required: true,
     },
-    user_agent: {
-      type: String, // Browser or device information
+    userAgent: {
+      type: String,
       required: true,
     },
-    expires_at: {
+    expiresAt: {
       type: Date,
-      required: true, // Expiration time for the session
+      required: true,
     },
-    is_active: {
+    isActive: {
       type: Boolean,
-      default: true, // Indicates whether the session is active
+      default: true,
     },
   },
   {
-    timestamps: true, 
+    timestamps: true,
   }
 );
+
+// Static method to limit concurrent sessions per user
+userSessionSchema.statics.limitSessions = async function(userId, maxSessions = 3) {
+  const sessions = await this.find({ userId: userId, isActive: true })
+    .sort({ createdAt: -1 });
+
+  if (sessions.length > maxSessions) {
+    const sessionsToDelete = sessions.slice(maxSessions);
+    const sessionIds = sessionsToDelete.map(s => s._id);
+    await this.updateMany(
+      { _id: { $in: sessionIds } },
+      { isActive: false }
+    );
+  }
+};
 
 const UserSession = mongoose.model('UserSession', userSessionSchema);
 
