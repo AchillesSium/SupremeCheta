@@ -20,8 +20,8 @@ router.put('/:id', /*auth, restrictTo('admin', 'vendor'),*/ productCtrl.updatePr
 router.delete('/:id', /*auth, restrictTo('admin'),*/ productCtrl.deleteProduct);
 
 // Media
-router.post('/:id/media', auth, restrictTo('admin', 'vendor'), uploadProductMixed, productCtrl.uploadMedia);
-router.patch('/:id/media/:mediaId/primary', auth, restrictTo('admin', 'vendor'), productCtrl.setPrimaryMedia);
-router.delete('/:id/media/:mediaId', auth, restrictTo('admin', 'vendor'), productCtrl.deleteMedia);
+router.post('/:id/media', /*auth, restrictTo('admin', 'vendor'),*/ uploadProductMixed, productCtrl.uploadMedia);
+router.patch('/:id/media/:mediaId/primary', /*auth, restrictTo('admin', 'vendor'),*/ productCtrl.setPrimaryMedia);
+router.delete('/:id/media/:mediaId', /*auth, restrictTo('admin', 'vendor'),*/ productCtrl.deleteMedia);
 
 module.exports = router;

@@ -18,23 +18,35 @@ import {
   Select,
   OutlinedInput,
   Checkbox,
+  Tooltip,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import StarIcon from '@mui/icons-material/Star';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import {
   createProduct,
   updateProduct,
-  createOrGetProductTag,     // POST /api/products/tags
-  updateProductTagProductId, // PUT  /api/products/tags/:tagId   (attach product_id)
-  detachProductFromTag,      // ✅ DELETE /api/products/tags/:tagId/product/:productId
+
+  createOrGetProductTag,
+  updateProductTagProductId,
+  detachProductFromTag,
+
+  uploadProductMedia,
+  setPrimaryProductMedia,
+  deleteProductMedia,
 } from './productApi';
 
 import { getAllCategories } from '../category/categoryApi';
 import { getAllBrands } from '../brand/brandApi';
 
 const emptySpec = { name: '', value: '' };
+
+const isImageFile = (file) => (file?.type || '').startsWith('image/');
+const isVideoFile = (file) => (file?.type || '').startsWith('video/');
 
 const AddEditProductPage = ({ mode = 'create', product = null }) => {
   const navigate = useNavigate();
@@ -95,14 +107,12 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
   const normalizedTagInput = useMemo(() => tagInput.trim().toLowerCase(), [tagInput]);
   const canAddTag = !!normalizedTagInput && !tagAdding;
 
-  // product id: in edit mode we have product._id, in create mode product doesn't exist yet
   const productIdForDetach = isEdit ? product?._id : null;
 
   const handleAddTag = async () => {
     const tagName = normalizedTagInput;
     if (!tagName) return;
 
-    // prevent duplicates (by name)
     const exists = tagItems.some((t) => (t.name || '').toLowerCase() === tagName);
     if (exists) {
       setTagInput('');
@@ -113,12 +123,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
       setTagAdding(true);
       setTagError('');
 
-      // product_id optional in your API
-      const res = await createOrGetProductTag({
-        tag_name: tagName,
-        // If you WANT to attach immediately in edit mode, you can pass product_id here:
-        // product_id: productIdForDetach || undefined,
-      });
+      const res = await createOrGetProductTag({ tag_name: tagName });
 
       const id = res?.data?._id || res?.data?.id;
       const apiName = res?.data?.tag_name || res?.data?.name || tagName;
@@ -135,11 +140,9 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
   };
 
   const handleRemoveTag = async (tagId) => {
-    // Optimistically remove from UI
     const removed = tagItems.find((t) => t._id === tagId);
     setTagItems((prev) => prev.filter((t) => t._id !== tagId));
 
-    // If product id exists (edit mode), call backend to detach
     if (!productIdForDetach) return;
 
     try {
@@ -151,17 +154,195 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
       });
 
       await detachProductFromTag(tagId, productIdForDetach);
-
-      // refresh product cache if you have it
       await qc.invalidateQueries({ queryKey: ['product', productIdForDetach] });
     } catch (e) {
-      // rollback on failure
       setTagItems((prev) => (removed ? [...prev, removed] : prev));
       setTagError(e?.message || 'Failed to remove tag from product');
     } finally {
       setTagDeletingIds((prev) => {
         const next = new Set(prev);
         next.delete(tagId);
+        return next;
+      });
+    }
+  };
+
+  // ----------------------------
+  // MEDIA UI (images + videos)
+  // ----------------------------
+  const [existingMedia, setExistingMedia] = useState(() => {
+    const images = Array.isArray(product?.imagesMedia) ? product.imagesMedia : [];
+    const videos = Array.isArray(product?.videosMedia) ? product.videosMedia : [];
+    const media = Array.isArray(product?.media) ? product.media : [];
+    const combined = [...images, ...videos];
+    return combined.length ? combined : media;
+  });
+
+  // New files selected (not uploaded yet)
+  const [pendingFiles, setPendingFiles] = useState([]); // File[]
+
+  // ✅ FIX: store GLOBAL index (because backend compares against global i)
+  const [pendingPrimaryImageGlobalIdx, setPendingPrimaryImageGlobalIdx] = useState(null);
+  const [pendingPrimaryVideoGlobalIdx, setPendingPrimaryVideoGlobalIdx] = useState(null);
+
+  const [mediaError, setMediaError] = useState('');
+  const [mediaUploading, setMediaUploading] = useState(false);
+  const [mediaDeletingIds, setMediaDeletingIds] = useState(() => new Set());
+  const [mediaPrimarySettingIds, setMediaPrimarySettingIds] = useState(() => new Set());
+
+  const pendingPreviews = useMemo(() => {
+    return pendingFiles.map((f) => ({
+      file: f,
+      url: URL.createObjectURL(f),
+      kind: isImageFile(f) ? 'image' : 'video',
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingFiles]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        pendingPreviews.forEach((p) => URL.revokeObjectURL(p.url));
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [pendingPreviews]);
+
+  const handlePickFiles = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+
+    const bad = files.find((f) => !isImageFile(f) && !isVideoFile(f));
+    if (bad) {
+      setMediaError('Only image/video files are allowed.');
+      return;
+    }
+
+    setMediaError('');
+    setPendingFiles((prev) => [...prev, ...files]);
+  };
+
+  const handleRemovePendingFile = (globalIdx) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== globalIdx));
+
+    // ✅ adjust global primary indices
+    if (pendingPrimaryImageGlobalIdx === globalIdx) setPendingPrimaryImageGlobalIdx(null);
+    if (pendingPrimaryVideoGlobalIdx === globalIdx) setPendingPrimaryVideoGlobalIdx(null);
+
+    // If removed item is before the chosen primary index, shift it down
+    if (pendingPrimaryImageGlobalIdx != null && globalIdx < pendingPrimaryImageGlobalIdx) {
+      setPendingPrimaryImageGlobalIdx((x) => (x == null ? x : x - 1));
+    }
+    if (pendingPrimaryVideoGlobalIdx != null && globalIdx < pendingPrimaryVideoGlobalIdx) {
+      setPendingPrimaryVideoGlobalIdx((x) => (x == null ? x : x - 1));
+    }
+  };
+
+  const handleSetPendingPrimary = (globalIdx) => {
+    const f = pendingFiles[globalIdx];
+    if (!f) return;
+    if (isImageFile(f)) setPendingPrimaryImageGlobalIdx(globalIdx);
+    if (isVideoFile(f)) setPendingPrimaryVideoGlobalIdx(globalIdx);
+  };
+
+  const refreshExistingMediaFromProduct = async (productId) => {
+    await qc.invalidateQueries({ queryKey: ['product', productId] });
+
+    const cached = qc.getQueryData(['product', productId]);
+    const data = cached?.data || cached;
+
+    const images = Array.isArray(data?.imagesMedia) ? data.imagesMedia : [];
+    const videos = Array.isArray(data?.videosMedia) ? data.videosMedia : [];
+    const media = Array.isArray(data?.media) ? data.media : [];
+    const combined = [...images, ...videos];
+    if (combined.length) setExistingMedia(combined);
+    else if (media.length) setExistingMedia(media);
+  };
+
+  const handleUploadPendingMedia = async (productId) => {
+    if (!productId) return;
+    if (!pendingFiles.length) return;
+
+    try {
+      setMediaUploading(true);
+      setMediaError('');
+
+      const fd = new FormData();
+
+      // Use "media" field for mixed upload (backend accepts media/images/videos)
+      pendingFiles.forEach((f) => fd.append('media', f));
+
+      // ✅ send GLOBAL indices (because backend uses global i)
+      if (pendingPrimaryImageGlobalIdx != null) {
+        fd.append('primaryImageIndex', String(pendingPrimaryImageGlobalIdx));
+      }
+      if (pendingPrimaryVideoGlobalIdx != null) {
+        fd.append('primaryVideoIndex', String(pendingPrimaryVideoGlobalIdx));
+      }
+
+      fd.append('sortOrder', '0');
+
+      await uploadProductMedia(productId, fd);
+
+      setPendingFiles([]);
+      setPendingPrimaryImageGlobalIdx(null);
+      setPendingPrimaryVideoGlobalIdx(null);
+
+      await refreshExistingMediaFromProduct(productId);
+    } catch (e) {
+      setMediaError(e?.message || 'Failed to upload media');
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
+  const handleDeleteExistingMedia = async (productId, mediaId) => {
+    if (!productId || !mediaId) return;
+    try {
+      setMediaError('');
+      setMediaDeletingIds((prev) => new Set(prev).add(mediaId));
+
+      await deleteProductMedia(productId, mediaId);
+
+      setExistingMedia((prev) => prev.filter((m) => (m?._id || m?.id) !== mediaId));
+      await refreshExistingMediaFromProduct(productId);
+    } catch (e) {
+      setMediaError(e?.message || 'Failed to delete media');
+    } finally {
+      setMediaDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(mediaId);
+        return next;
+      });
+    }
+  };
+
+  const handleSetPrimaryExistingMedia = async (productId, mediaId, kind) => {
+    if (!productId || !mediaId || !kind) return;
+    try {
+      setMediaError('');
+      setMediaPrimarySettingIds((prev) => new Set(prev).add(mediaId));
+
+      await setPrimaryProductMedia(productId, mediaId, kind);
+
+      setExistingMedia((prev) =>
+        prev.map((m) => {
+          const mid = m?._id || m?.id;
+          if (!mid) return m;
+          if ((m?.kind || '').toLowerCase() !== kind) return m;
+          return { ...m, isPrimary: mid === mediaId };
+        })
+      );
+
+      await refreshExistingMediaFromProduct(productId);
+    } catch (e) {
+      setMediaError(e?.message || 'Failed to set primary media');
+    } finally {
+      setMediaPrimarySettingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(mediaId);
         return next;
       });
     }
@@ -190,7 +371,6 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
       : [];
     setCategoryIds(cats);
 
-    // sync tags
     const t = Array.isArray(product?.tags) ? product.tags : [];
     const mappedTags = t
       .map((x) => {
@@ -200,6 +380,12 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
       })
       .filter(Boolean);
     setTagItems(mappedTags);
+
+    const images = Array.isArray(product?.imagesMedia) ? product.imagesMedia : [];
+    const videos = Array.isArray(product?.videosMedia) ? product.videosMedia : [];
+    const media = Array.isArray(product?.media) ? product.media : [];
+    const combined = [...images, ...videos];
+    setExistingMedia(combined.length ? combined : media);
   }, [isEdit, product]);
 
   // Fetch categories + brands
@@ -253,7 +439,6 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
       categories: categoryIds,
       brand: brandId || undefined,
 
-      // TAG IDS gathered during add-tag calls
       tags: tagIds,
 
       quantity: Number(quantity),
@@ -265,37 +450,34 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      // 1) Create or Update product first
       const productRes = isEdit
         ? await updateProduct(product._id, basePayload)
         : await createProduct(basePayload);
-  
+
       const productId =
-        (isEdit ? product?._id : null) ||
-        productRes?.data?._id ||
-        productRes?.data?.id;
-  
+        (isEdit ? product?._id : null) || productRes?.data?._id || productRes?.data?.id;
+
       if (!productId) return productRes;
-  
-      // 2) Attach product_id to each selected tag (for BOTH create & update)
+
+      // attach product_id to each tag
       const tagIds = tagItems.map((t) => t._id).filter(Boolean);
-  
       if (tagIds.length) {
-        await Promise.all(
-          tagIds.map((tagId) => updateProductTagProductId(tagId, { product_id: productId }))
-        );
+        await Promise.all(tagIds.map((tagId) => updateProductTagProductId(tagId, { product_id: productId })));
       }
-  
+
+      // upload pending media after save
+      if (pendingFiles.length) {
+        await handleUploadPendingMedia(productId);
+      }
+
       return productRes;
     },
-  
+
     onSuccess: async (res) => {
       await qc.invalidateQueries({ queryKey: ['products'] });
-  
-      const productId = isEdit
-        ? product?._id
-        : res?.data?._id || res?.data?.id;
-  
+
+      const productId = isEdit ? product?._id : res?.data?._id || res?.data?.id;
+
       if (isEdit) {
         await qc.invalidateQueries({ queryKey: ['product', productId] });
         navigate('/dashboard/products');
@@ -315,6 +497,8 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
     brandId &&
     !Number.isNaN(Number(price)) &&
     !Number.isNaN(Number(quantity));
+
+  const mediaCanManageExisting = !!(isEdit && product?._id);
 
   return (
     <Container maxWidth="md" sx={{ mt: 3 }}>
@@ -336,13 +520,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
           )}
           {lookupError && <Typography color="error">{lookupError}</Typography>}
 
-          <TextField
-            label="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            fullWidth
-          />
+          <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} required fullWidth />
 
           <TextField
             label="Description"
@@ -355,20 +533,8 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
           />
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-            <TextField
-              label="Price"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              required
-              fullWidth
-            />
-            <TextField
-              select
-              label="Status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              fullWidth
-            >
+            <TextField label="Price" value={price} onChange={(e) => setPrice(e.target.value)} required fullWidth />
+            <TextField select label="Status" value={status} onChange={(e) => setStatus(e.target.value)} fullWidth>
               <MenuItem value="draft">draft</MenuItem>
               <MenuItem value="published">published</MenuItem>
               <MenuItem value="archived">archived</MenuItem>
@@ -376,19 +542,8 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
           </Stack>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-            <TextField
-              label="SKU"
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Quantity"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              fullWidth
-            />
+            <TextField label="SKU" value={sku} onChange={(e) => setSku(e.target.value)} required fullWidth />
+            <TextField label="Quantity" value={quantity} onChange={(e) => setQuantity(e.target.value)} fullWidth />
           </Stack>
 
           <Divider />
@@ -461,9 +616,6 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
 
           <Divider />
 
-          {/* ---------------- */}
-          {/* TAGS (new UI)    */}
-          {/* ---------------- */}
           <Typography variant="subtitle1" fontWeight={600}>
             Tags
           </Typography>
@@ -484,12 +636,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
               }}
             />
 
-            <Button
-              variant="contained"
-              onClick={handleAddTag}
-              disabled={!canAddTag}
-              sx={{ minWidth: 120 }}
-            >
+            <Button variant="contained" onClick={handleAddTag} disabled={!canAddTag} sx={{ minWidth: 120 }}>
               {tagAdding ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <CircularProgress size={16} /> Adding…
@@ -512,11 +659,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
                   onDelete={deleting ? undefined : () => handleRemoveTag(t._id)}
                   variant="outlined"
                   sx={{ borderRadius: 999, opacity: deleting ? 0.6 : 1 }}
-                  deleteIcon={
-                    deleting ? (
-                      <CircularProgress size={16} />
-                    ) : undefined
-                  }
+                  deleteIcon={deleting ? <CircularProgress size={16} /> : undefined}
                 />
               );
             })}
@@ -525,16 +668,212 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
           <Divider />
 
           <Typography variant="subtitle1" fontWeight={600}>
+            Media (Images / Videos)
+          </Typography>
+
+          {!isEdit && (
+            <Typography variant="body2" sx={{ opacity: 0.8 }}>
+              You can select media now; it will upload automatically after you click <b>Create</b>.
+            </Typography>
+          )}
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<UploadFileIcon />}
+              disabled={mediaUploading || mutation.isPending}
+              sx={{ alignSelf: { xs: 'stretch', sm: 'flex-start' } }}
+            >
+              Choose files
+              <input hidden type="file" accept="image/*,video/*" multiple onChange={handlePickFiles} />
+            </Button>
+
+            {mediaCanManageExisting && pendingFiles.length > 0 && (
+              <Button
+                variant="contained"
+                disabled={mediaUploading || mutation.isPending}
+                onClick={() => handleUploadPendingMedia(product._id)}
+              >
+                {mediaUploading ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <CircularProgress size={16} /> Uploading…
+                  </span>
+                ) : (
+                  `Upload ${pendingFiles.length} file(s)`
+                )}
+              </Button>
+            )}
+          </Stack>
+
+          {mediaError && <Typography color="error">{mediaError}</Typography>}
+
+          {/* Pending (selected) files */}
+          {pendingPreviews.length > 0 && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+                Selected (not uploaded yet)
+              </Typography>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                  gap: 1.5,
+                }}
+              >
+                {pendingPreviews.map((p, globalIdx) => {
+                  const kind = p.kind;
+
+                  const isPrimary =
+                    (kind === 'image' && pendingPrimaryImageGlobalIdx === globalIdx) ||
+                    (kind === 'video' && pendingPrimaryVideoGlobalIdx === globalIdx);
+
+                  return (
+                    <Paper key={`${p.file.name}-${globalIdx}`} variant="outlined" sx={{ p: 1.25 }}>
+                      <Stack spacing={1}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                          <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+                            <b>{kind}</b> — {p.file.name}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleRemovePendingFile(globalIdx)}
+                            disabled={mediaUploading || mutation.isPending}
+                          >
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+
+                        <Box sx={{ borderRadius: 1, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
+                          {p.kind === 'image' ? (
+                            <img
+                              src={p.url}
+                              alt={p.file.name}
+                              style={{ width: '100%', height: 200, objectFit: 'cover', display: 'block' }}
+                            />
+                          ) : (
+                            <video
+                              src={p.url}
+                              controls
+                              style={{ width: '100%', height: 200, objectFit: 'cover', display: 'block' }}
+                            />
+                          )}
+                        </Box>
+
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Button
+                            size="small"
+                            variant={isPrimary ? 'contained' : 'outlined'}
+                            startIcon={<StarIcon />}
+                            onClick={() => handleSetPendingPrimary(globalIdx)}
+                            disabled={mediaUploading || mutation.isPending}
+                          >
+                            {isPrimary ? 'Primary' : 'Set primary'}
+                          </Button>
+
+                          <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                            {Math.round(p.file.size / 1024)} KB
+                          </Typography>
+                        </Stack>
+                      </Stack>
+                    </Paper>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
+
+          {/* Existing media */}
+          {existingMedia?.length > 0 && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+                Uploaded
+              </Typography>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                  gap: 1.5,
+                }}
+              >
+                {existingMedia.map((m) => {
+                  const id = m?._id || m?.id;
+                  const kind = (m?.kind || '').toLowerCase();
+                  const url = m?.url;
+                  const deleting = mediaDeletingIds.has(id);
+                  const settingPrimary = mediaPrimarySettingIds.has(id);
+
+                  return (
+                    <Paper key={id} variant="outlined" sx={{ p: 1.25, opacity: deleting ? 0.6 : 1 }}>
+                      <Stack spacing={1}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                          <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+                            <b>{kind}</b>
+                            {m?.isPrimary ? (
+                              <Chip size="small" label="Primary" sx={{ ml: 1 }} icon={<StarIcon />} />
+                            ) : null}
+                          </Typography>
+
+                          <Stack direction="row" spacing={0.5}>
+                            <Tooltip title={mediaCanManageExisting ? 'Set as primary' : 'Save product first'}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  disabled={!mediaCanManageExisting || deleting || settingPrimary}
+                                  onClick={() => handleSetPrimaryExistingMedia(product._id, id, kind)}
+                                >
+                                  {settingPrimary ? <CircularProgress size={16} /> : <StarIcon fontSize="small" />}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+
+                            <Tooltip title={mediaCanManageExisting ? 'Delete' : 'Save product first'}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  disabled={!mediaCanManageExisting || deleting || settingPrimary}
+                                  onClick={() => handleDeleteExistingMedia(product._id, id)}
+                                >
+                                  {deleting ? <CircularProgress size={16} /> : <DeleteOutlineIcon fontSize="small" />}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Stack>
+                        </Box>
+
+                        <Box sx={{ borderRadius: 1, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
+                          {kind === 'image' ? (
+                            <img
+                              src={url}
+                              alt={m?.alt || m?.title || 'product image'}
+                              style={{ width: '100%', height: 200, objectFit: 'cover', display: 'block' }}
+                            />
+                          ) : (
+                            <video
+                              src={url}
+                              controls
+                              style={{ width: '100%', height: 200, objectFit: 'cover', display: 'block' }}
+                            />
+                          )}
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
+
+          <Divider />
+
+          <Typography variant="subtitle1" fontWeight={600}>
             Specifications
           </Typography>
 
           {specs.map((s, idx) => (
-            <Stack
-              key={idx}
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={2}
-              alignItems="center"
-            >
+            <Stack key={idx} direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
               <TextField
                 label="Name"
                 value={s.name}
@@ -575,15 +914,13 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
           </Box>
 
           {mutation.isError && (
-            <Typography color="error">
-              {mutation.error?.message || 'Failed to save product'}
-            </Typography>
+            <Typography color="error">{mutation.error?.message || 'Failed to save product'}</Typography>
           )}
 
           <Stack direction="row" spacing={2}>
             <Button
               variant="contained"
-              disabled={!canSave || mutation.isPending || loadingLookups}
+              disabled={!canSave || mutation.isPending || loadingLookups || mediaUploading}
               onClick={() => mutation.mutate()}
             >
               {mutation.isPending ? (

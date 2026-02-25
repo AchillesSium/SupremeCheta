@@ -42,12 +42,6 @@ export function updateProduct(id, payload) {
   });
 }
 
-/**
- * 1) Create/Get Product Tag FIRST (product_id OPTIONAL)
- * Backend route:
- *    POST /api/products/tags
- * body: { tag_name: "shoes", product_id?: "<optional>" }
- */
 export function createOrGetProductTag(body) {
   return fetchJson(`${API_BASE_URL}/products/tags`, {
     method: 'POST',
@@ -56,12 +50,6 @@ export function createOrGetProductTag(body) {
   });
 }
 
-/**
- * 3) After product created, attach product to tag (product_id REQUIRED)
- * Backend route:
- *    PUT /api/products/tags/:tagId
- * body: { product_id: "<newProductId>" }
- */
 export function updateProductTagProductId(tagId, body) {
   return fetchJson(`${API_BASE_URL}/products/tags/${tagId}`, {
     method: 'PUT',
@@ -70,14 +58,43 @@ export function updateProductTagProductId(tagId, body) {
   });
 }
 
-/**
- * Detach product from tag (remove productId from ProductTag.product_ids
- * and remove tagId from Product.tags)
- * Backend route:
- *    DELETE /api/products/tags/:tagId/product/:productId
- */
 export function detachProductFromTag(tagId, productId) {
   return fetchJson(`${API_BASE_URL}/products/tags/${tagId}/product/${productId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/* =========================
+   PRODUCT MEDIA
+   ========================= */
+
+export async function uploadProductMedia(productId, formData) {
+  const res = await fetch(`${API_BASE_URL}/products/${productId}/media`, {
+    method: 'POST',
+    body: formData, // do NOT set Content-Type manually
+  });
+
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!res.ok) {
+    const msg = data?.message || `${res.status} ${res.statusText}`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+export function setPrimaryProductMedia(productId, mediaId, kind) {
+  const qs = new URLSearchParams({ kind });
+  return fetchJson(`${API_BASE_URL}/products/${productId}/media/${mediaId}/primary?${qs.toString()}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export function deleteProductMedia(productId, mediaId) {
+  return fetchJson(`${API_BASE_URL}/products/${productId}/media/${mediaId}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
