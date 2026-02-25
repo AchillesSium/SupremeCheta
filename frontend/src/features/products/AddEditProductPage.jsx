@@ -274,7 +274,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
       // Use "media" field for mixed upload (backend accepts media/images/videos)
       pendingFiles.forEach((f) => fd.append('media', f));
 
-      // ✅ send GLOBAL indices (because backend uses global i)
+      // send GLOBAL indices (because backend uses global i)
       if (pendingPrimaryImageGlobalIdx != null) {
         fd.append('primaryImageIndex', String(pendingPrimaryImageGlobalIdx));
       }

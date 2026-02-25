@@ -9,31 +9,21 @@ const ProductTag = require('../models/product_tag');
 // Build a public URL for a stored file
 function toPublicUrl(req, filePath) {
   const base = `${req.protocol}://${req.get('host')}`;
-
-  // Your static server root:
-  // app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-  // so the URL must be /uploads/<filename>
   let rel;
 
   if (!filePath) {
     throw new Error('Upload error: filePath is missing (multer did not provide f.path)');
   }
 
-  // If multer returns absolute path: /.../backend/uploads/x.png
-  // make it relative to backend folder
   if (path.isAbsolute(filePath)) {
     const backendRoot = path.join(process.cwd(), 'backend');
     rel = '/' + path.relative(backendRoot, filePath);
   } else {
-    // If multer returns relative: uploads/x.png
     rel = filePath.startsWith('/') ? filePath : '/' + filePath;
   }
 
   rel = rel.replace(/\\/g, '/');
-
-  // Ensure it actually points under /uploads
   if (!rel.startsWith('/uploads/')) {
-    // if it’s like "/backend/uploads/.." or "/something/uploads/..", normalize to /uploads/..
     const idx = rel.indexOf('/uploads/');
     if (idx !== -1) rel = rel.slice(idx);
   }
