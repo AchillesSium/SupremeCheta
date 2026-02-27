@@ -65,6 +65,13 @@ export function detachProductFromTag(tagId, productId) {
   });
 }
 
+export function deleteProduct(id) {
+  return fetchJson(`${API_BASE_URL}/products/${id}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 /* =========================
    PRODUCT MEDIA
    ========================= */

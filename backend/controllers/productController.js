@@ -244,33 +244,95 @@ exports.updateProduct = async (req, res) => {
 
 // DELETE /api/products/:id
 exports.deleteProduct = async (req, res) => {
+  const session = await mongoose.startSession();
+
   try {
-    if (!mongoose.isValidObjectId(req.params.id)) {
+    const productId = req.params.id;
+
+    if (!mongoose.isValidObjectId(productId)) {
       return res.status(400).json({ success: false, message: 'Invalid product id' });
     }
 
-    const doc = await Product.findById(req.params.id);
-    if (!doc) return res.status(404).json({ success: false, message: 'Product not found' });
+    let deletedMediaCount = 0;
+    let detachedTagCount = 0;
 
-    // Delete media files on disk as well
-    const medias = await ProductMedia.find({ product_id: doc._id });
-    for (const m of medias) {
-      if (m.url?.startsWith('http')) continue; // remote CDN
-      const filePath = path.join(process.cwd(), 'backend', m.url.replace(/^.*\/uploads\//, 'uploads/'));
-      if (fs.existsSync(filePath)) {
-        try {
-          fs.unlinkSync(filePath);
-        } catch {
-          /* ignore */
+    await session.withTransaction(async () => {
+      const product = await Product.findById(productId).session(session);
+      if (!product) {
+        const err = new Error('Product not found');
+        err.statusCode = 404;
+        throw err;
+      }
+
+      /* ---------------------------
+         1) Detach product from tags
+         --------------------------- */
+
+      // product.tags holds tagIds (ObjectId[])
+      const tagIds = Array.isArray(product.tags) ? product.tags.map(String) : [];
+
+      if (tagIds.length) {
+        // Remove productId from ProductTag.product_ids
+        const tagUpdateRes = await ProductTag.updateMany(
+          { _id: { $in: tagIds } },
+          { $pull: { product_ids: productId } },
+          { session }
+        );
+        detachedTagCount = tagUpdateRes.modifiedCount || 0;
+
+        // Remove all tags from the product itself (optional but keeps DB clean)
+        await Product.updateOne(
+          { _id: productId },
+          { $set: { tags: [] } },
+          { session }
+        );
+      }
+
+      /* ---------------------------
+         2) Delete all media + files
+         --------------------------- */
+
+      const medias = await ProductMedia.find({ product_id: productId }).session(session);
+
+      for (const m of medias) {
+        const url = (m.url || '').toString();
+
+        // If URL contains /uploads/, try deleting local file
+        const idx = url.indexOf('/uploads/');
+        if (idx !== -1) {
+          const relAfterUploads = url.slice(idx + '/uploads/'.length); // e.g. products/images/x.jpg
+          const filePath = path.join(process.cwd(), 'backend', 'uploads', relAfterUploads);
+
+          if (fs.existsSync(filePath)) {
+            try {
+              fs.unlinkSync(filePath);
+            } catch {
+              // ignore delete errors, still proceed with DB cleanup
+            }
+          }
         }
       }
-    }
-    await ProductMedia.deleteMany({ product_id: doc._id });
 
-    await doc.deleteOne();
-    res.json({ success: true, message: 'Product deleted' });
+      const delMediaRes = await ProductMedia.deleteMany({ product_id: productId }).session(session);
+      deletedMediaCount = delMediaRes.deletedCount || 0;
+
+      /* ---------------------------
+         3) Delete the product itself
+         --------------------------- */
+      await Product.deleteOne({ _id: productId }).session(session);
+    });
+
+    return res.json({
+      success: true,
+      message: 'Product deleted',
+      detachedTags: detachedTagCount,
+      deletedMedia: deletedMediaCount,
+    });
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    const status = err.statusCode || 400;
+    return res.status(status).json({ success: false, message: err.message });
+  } finally {
+    session.endSession();
   }
 };
 
@@ -339,28 +401,38 @@ exports.uploadMedia = async (req, res) => {
 exports.setPrimaryMedia = async (req, res) => {
   try {
     const { id, mediaId } = req.params;
-    const { kind } = req.query; // image | video
+    const kind = (req.query.kind || '').toString().toLowerCase();
 
     if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(mediaId)) {
       return res.status(400).json({ success: false, message: 'Invalid id' });
     }
-
     if (!['image', 'video'].includes(kind)) {
       return res.status(400).json({ success: false, message: 'kind must be image or video' });
     }
 
-    await ProductMedia.updateMany({ product_id: id, kind }, { $set: { isPrimary: false } });
-    const updated = await ProductMedia.findOneAndUpdate(
-      { _id: mediaId, product_id: id, kind },
-      { $set: { isPrimary: true } },
-      { new: true }
-    );
+    // Ensure media belongs to product + kind
+    const target = await ProductMedia.findOne({ _id: mediaId, product_id: id, kind });
+    if (!target) return res.status(404).json({ success: false, message: 'Media not found' });
 
-    if (!updated) return res.status(404).json({ success: false, message: 'Media not found' });
+    await ProductMedia.bulkWrite([
+      {
+        updateMany: {
+          filter: { product_id: id, isPrimary: true },
+          update: { $set: { isPrimary: false } },
+        },
+      },
+      {
+        updateOne: {
+          filter: { _id: mediaId, product_id: id, kind },
+          update: { $set: { isPrimary: true } },
+        },
+      },
+    ]);
 
-    res.json({ success: true, data: updated });
+    const updated = await ProductMedia.findById(mediaId);
+    return res.json({ success: true, data: updated });
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    return res.status(400).json({ success: false, message: err.message });
   }
 };
 

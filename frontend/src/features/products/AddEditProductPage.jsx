@@ -26,10 +26,13 @@ import StarIcon from '@mui/icons-material/Star';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 
 import {
   createProduct,
   updateProduct,
+  deleteProduct,
 
   createOrGetProductTag,
   updateProductTagProductId,
@@ -61,6 +64,10 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
   const [sku, setSku] = useState(product?.inventory?.sku || '');
   const [quantity, setQuantity] = useState(product?.inventory?.quantity ?? 0);
 
+  // ✅ Delete product state
+  const [deletingProduct, setDeletingProduct] = useState(false);
+  const [deleteProductError, setDeleteProductError] = useState('');
+
   // Lookups
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
@@ -85,8 +92,29 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
     return s.length ? s.map((x) => ({ name: x.name || '', value: x.value || '' })) : [emptySpec];
   });
 
+  const quillModules = {
+    toolbar: [
+      [{ header: [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ list: 'ordered' }, { list: 'bullet' }],
+      ['link'],
+      ['clean'],
+    ],
+  };
+
+  const quillFormats = [
+    'header',
+    'bold',
+    'italic',
+    'underline',
+    'strike',
+    'list',
+    'bullet',
+    'link',
+  ];
+
   // ----------------------------
-  // TAGS UI: input + add + chips
+  // TAGS UI
   // ----------------------------
   const [tagInput, setTagInput] = useState('');
   const [tagItems, setTagItems] = useState(() => {
@@ -168,7 +196,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
   };
 
   // ----------------------------
-  // MEDIA UI (images + videos)
+  // MEDIA UI
   // ----------------------------
   const [existingMedia, setExistingMedia] = useState(() => {
     const images = Array.isArray(product?.imagesMedia) ? product.imagesMedia : [];
@@ -178,10 +206,9 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
     return combined.length ? combined : media;
   });
 
-  // New files selected (not uploaded yet)
   const [pendingFiles, setPendingFiles] = useState([]); // File[]
 
-  // ✅ FIX: store GLOBAL index (because backend compares against global i)
+  // store GLOBAL index (backend compares against global i)
   const [pendingPrimaryImageGlobalIdx, setPendingPrimaryImageGlobalIdx] = useState(null);
   const [pendingPrimaryVideoGlobalIdx, setPendingPrimaryVideoGlobalIdx] = useState(null);
 
@@ -227,11 +254,9 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
   const handleRemovePendingFile = (globalIdx) => {
     setPendingFiles((prev) => prev.filter((_, i) => i !== globalIdx));
 
-    // ✅ adjust global primary indices
     if (pendingPrimaryImageGlobalIdx === globalIdx) setPendingPrimaryImageGlobalIdx(null);
     if (pendingPrimaryVideoGlobalIdx === globalIdx) setPendingPrimaryVideoGlobalIdx(null);
 
-    // If removed item is before the chosen primary index, shift it down
     if (pendingPrimaryImageGlobalIdx != null && globalIdx < pendingPrimaryImageGlobalIdx) {
       setPendingPrimaryImageGlobalIdx((x) => (x == null ? x : x - 1));
     }
@@ -270,11 +295,8 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
       setMediaError('');
 
       const fd = new FormData();
-
-      // Use "media" field for mixed upload (backend accepts media/images/videos)
       pendingFiles.forEach((f) => fd.append('media', f));
 
-      // send GLOBAL indices (because backend uses global i)
       if (pendingPrimaryImageGlobalIdx != null) {
         fd.append('primaryImageIndex', String(pendingPrimaryImageGlobalIdx));
       }
@@ -345,6 +367,30 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
         next.delete(mediaId);
         return next;
       });
+    }
+  };
+
+  // ✅ Delete product handler
+  const handleDeleteProduct = async () => {
+    if (!isEdit || !product?._id) return;
+
+    const ok = window.confirm('Are you sure you want to delete this product? This cannot be undone.');
+    if (!ok) return;
+
+    try {
+      setDeletingProduct(true);
+      setDeleteProductError('');
+
+      await deleteProduct(product._id);
+
+      await qc.invalidateQueries({ queryKey: ['products'] });
+      await qc.invalidateQueries({ queryKey: ['product', product._id] });
+
+      navigate('/dashboard/products');
+    } catch (e) {
+      setDeleteProductError(e?.message || 'Failed to delete product');
+    } finally {
+      setDeletingProduct(false);
     }
   };
 
@@ -454,8 +500,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
         ? await updateProduct(product._id, basePayload)
         : await createProduct(basePayload);
 
-      const productId =
-        (isEdit ? product?._id : null) || productRes?.data?._id || productRes?.data?.id;
+      const productId = (isEdit ? product?._id : null) || productRes?.data?._id || productRes?.data?.id;
 
       if (!productId) return productRes;
 
@@ -488,9 +533,12 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
     },
   });
 
+  const stripHtml = (html) =>
+  (html || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+
   const canSave =
     name.trim() &&
-    description.trim() &&
+    stripHtml(description) &&
     String(price).trim() !== '' &&
     sku.trim() &&
     categoryIds.length > 0 &&
@@ -502,14 +550,37 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
 
   return (
     <Container maxWidth="md" sx={{ mt: 3 }}>
-      <Stack direction="row" alignItems="center" spacing={1} mb={2}>
-        <IconButton onClick={() => navigate('/dashboard/products')}>
-          <ArrowBackIcon />
-        </IconButton>
-        <Typography variant="h5" fontWeight={600}>
-          {isEdit ? 'Edit Product' : 'Add Product'}
-        </Typography>
+      {/* Header row with delete icon */}
+      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <IconButton onClick={() => navigate('/dashboard/products')}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h5" fontWeight={600}>
+            {isEdit ? 'Edit Product' : 'Add Product'}
+          </Typography>
+        </Stack>
+
+        {isEdit && (
+          <Tooltip title="Delete product">
+            <span>
+              <IconButton
+                color="error"
+                onClick={handleDeleteProduct}
+                disabled={deletingProduct || mutation.isPending || mediaUploading}
+              >
+                {deletingProduct ? <CircularProgress size={18} /> : <DeleteOutlineIcon />}
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
       </Stack>
+
+      {deleteProductError && (
+        <Typography color="error" sx={{ mb: 1 }}>
+          {deleteProductError}
+        </Typography>
+      )}
 
       <Paper sx={{ p: 2 }}>
         <Stack spacing={2}>
@@ -522,15 +593,20 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
 
           <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} required fullWidth />
 
-          <TextField
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            required
-            fullWidth
-            multiline
-            rows={4}
-          />
+          <Box>
+            <Typography sx={{ mb: 1, fontWeight: 600 }}>
+              Description
+            </Typography>
+
+            <ReactQuill
+              theme="snow"
+              value={description}
+              onChange={setDescription}
+              modules={quillModules}
+              formats={quillFormats}
+              style={{ height: 180, marginBottom: 40 }}
+            />
+          </Box>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField label="Price" value={price} onChange={(e) => setPrice(e.target.value)} required fullWidth />
@@ -550,12 +626,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
 
           <FormControl fullWidth required disabled={loadingLookups || !!lookupError}>
             <InputLabel id="brand-label">Brand</InputLabel>
-            <Select
-              labelId="brand-label"
-              label="Brand"
-              value={brandId || ''}
-              onChange={(e) => setBrandId(e.target.value)}
-            >
+            <Select labelId="brand-label" label="Brand" value={brandId || ''} onChange={(e) => setBrandId(e.target.value)}>
               {brands.map((b) => (
                 <MenuItem key={b._id} value={b._id}>
                   {b.name}
@@ -920,7 +991,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
           <Stack direction="row" spacing={2}>
             <Button
               variant="contained"
-              disabled={!canSave || mutation.isPending || loadingLookups || mediaUploading}
+              disabled={!canSave || mutation.isPending || loadingLookups || mediaUploading || deletingProduct}
               onClick={() => mutation.mutate()}
             >
               {mutation.isPending ? (
@@ -934,7 +1005,7 @@ const AddEditProductPage = ({ mode = 'create', product = null }) => {
               )}
             </Button>
 
-            <Button variant="outlined" onClick={() => navigate('/dashboard/products')}>
+            <Button variant="outlined" onClick={() => navigate('/dashboard/products')} disabled={mutation.isPending || deletingProduct}>
               Cancel
             </Button>
           </Stack>

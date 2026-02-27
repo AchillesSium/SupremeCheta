@@ -1,8 +1,8 @@
 import React from 'react';
-import { Box, Typography, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, IconButton } from '@mui/material';
 import { MoreHoriz, ArrowUpward, ArrowDownward } from '@mui/icons-material';
-import { styled, useTheme, alpha } from '@mui/material/styles';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
+import { styled, alpha } from '@mui/material/styles';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
 const StyledBox = styled(Box)(({ theme }) => ({
   padding: theme.spacing(3),
@@ -41,7 +41,6 @@ const categories = [
 ];
 
 const CustomLegend = ({ payload }) => {
-  const theme = useTheme();
   
   return (
     <Box sx={{ mt: 2 }}>
@@ -86,7 +85,6 @@ const CustomLegend = ({ payload }) => {
 };
 
 const TopCategories = () => {
-  const theme = useTheme();
 
   return (
     <StyledBox>
