@@ -24,7 +24,7 @@ const productRoutes = require('./routes/productRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
-const db = process.env.MONGO_URI || 'mongodb://localhost:27017/supreme-cheta';
+const db = process.env.MONGODB_URI || 'mongodb://localhost:27017/supreme-cheta';
 
 // Security middleware
 app.use(helmet());
