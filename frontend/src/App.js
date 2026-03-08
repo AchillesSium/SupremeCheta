@@ -14,6 +14,10 @@ import CategoryPage from './features/category/CategoryPage';
 import AddCategoryPage from './features/category/AddCategoryPage';
 import BrandPage from './features/brand/BrandPage';
 import AddBrandPage from './features/brand/AddBrandPage';
+import ProductPage from './features/products/ProductPage';
+import ProductDetailsPage from './features/products/ProductDetailsPage';
+import AddEditProductPage from './features/products/AddEditProductPage';
+import EditProductWrapper from './features/products/ EditProductWrapper';
 
 // Create Query Client
 const queryClient = new QueryClient({
@@ -85,6 +89,13 @@ const App = () => {
             <Route path="/dashboard/brands" element={<BrandPage />} />
             <Route path="/dashboard/add-brand" element={<AddBrandPage />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />
+
+            {/* Products */}
+            <Route path="/dashboard/products" element={<ProductPage />} />
+            <Route path="/dashboard/products/:id" element={<ProductDetailsPage />} />
+            <Route path="/dashboard/products/:id/edit" element={<EditProductWrapper />} />
+            <Route path="/dashboard/add-product" element={<AddEditProductPage mode="create" />} />
+
           </Route>
 
           <Route path="/login" element={

@@ -22,8 +22,11 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import API_BASE_URL from '../../config';
 
+import { getAllCategories, deleteCategory } from './categoryApi';
+
 const ORIGIN = new URL(API_BASE_URL).origin;
-const publicUrl = (p) => (!p ? '' : (/^https?:\/\//i.test(p) ? p : `${ORIGIN}/${p.replace(/^\//, '')}`));
+const publicUrl = (p) =>
+  !p ? '' : /^https?:\/\//i.test(p) ? p : `${ORIGIN}/${p.replace(/^\//, '')}`;
 
 const CategoryPage = () => {
   const navigate = useNavigate();
@@ -36,10 +39,7 @@ const CategoryPage = () => {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/categories`);
-        if (!response.ok) throw new Error('Failed to fetch categories');
-
-        const data = await response.json();
+        const data = await getAllCategories();
         const arr = Array.isArray(data.categories) ? data.categories : [];
         setAllCategories(arr);
       } catch (err) {
@@ -93,13 +93,7 @@ const CategoryPage = () => {
     setDeletingIds((prev) => new Set(prev).add(category._id));
 
     try {
-      const res = await fetch(`${API_BASE_URL}/categories/${category._id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status} ${res.statusText} — ${text.slice(0, 160)}…`);
-      }
+      await deleteCategory(category._id);
 
       setAllCategories((prev) => prev.filter((c) => c._id !== category._id));
       setExpanded((prev) => {

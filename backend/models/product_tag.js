@@ -6,17 +6,22 @@ const productTagSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      lowercase: true,
     },
-    product_id: {
-      type: mongoose.Schema.Types.ObjectId, // Reference to the Product collection
-      ref: 'Product', // Assumes there is a Product model
-      required: true,
-    },
+
+    product_ids: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Product',
+      }
+    ],
   },
   {
-    timestamps: true, // Automatically adds createdAt and updatedAt fields
+    timestamps: true,
   }
 );
+
+productTagSchema.index({ tag_name: 1 }, { unique: true });
 
 const ProductTag = mongoose.model('ProductTag', productTagSchema);
 

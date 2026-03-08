@@ -1,12 +1,11 @@
 import React, { useMemo } from 'react';
-import { Grid, Box, IconButton, Typography } from '@mui/material';
+import { Grid, Box } from '@mui/material';
 import {
   ShoppingCart,
-  People,
   Visibility,
   AttachMoney,
 } from '@mui/icons-material';
-import { styled, useTheme, alpha } from '@mui/material/styles';
+import { styled, useTheme } from '@mui/material/styles';
 import StatCard from '../../shared/components/Card/StatCard';
 import RecentOrders from './RecentOrders';
 import RevenueChart from './RevenueChart';

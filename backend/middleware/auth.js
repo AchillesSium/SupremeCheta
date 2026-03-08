@@ -1,6 +1,10 @@
 // backend/middleware/auth.js
 const { verifyAccessToken } = require('../utils/jwt');
 
+/**
+ * Basic auth: verifies JWT and attaches payload to req.user
+ * Expects JWT payload to include at least: { _id, role, email? }
+ */
 const auth = (req, res, next) => {
   try {
     const authHeader = req.header('Authorization');
@@ -46,4 +50,4 @@ const auth = (req, res, next) => {
   }
 };
 
-module.exports = auth;
+module.exports = { auth, restrictTo, ensureOwner };
