@@ -19,7 +19,7 @@ require('./models');
 const authRoutes = require('./routes/auth');
 const categoryRoutes = require('./routes/categoryRoutes');
 const brandRoutes = require('./routes/brandRoutes');
-const userRoutes = require('./routes/userRoutes.js');
+const userRoutes = require('./routes/UserRoutes');
 const productRoutes = require('./routes/productRoutes');
 
 const app = express();

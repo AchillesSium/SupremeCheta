@@ -50,4 +50,4 @@ const auth = (req, res, next) => {
   }
 };
 
-module.exports = { auth, restrictTo, ensureOwner };
+module.exports = auth;
