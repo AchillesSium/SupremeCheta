@@ -1,5 +1,5 @@
 // backend/middleware/auth.js
-const jwt = require('jsonwebtoken');
+const { verifyAccessToken } = require('../utils/jwt');
 
 /**
  * Basic auth: verifies JWT and attaches payload to req.user
@@ -7,62 +7,46 @@ const jwt = require('jsonwebtoken');
  */
 const auth = (req, res, next) => {
   try {
-    const header = req.header('Authorization') || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    const authHeader = req.header('Authorization');
+    const fingerprint = req.header('X-Fingerprint');
 
-    if (!token) {
-      return res.status(401).json({ message: 'No authentication token, access denied' });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'No authentication token, access denied',
+        code: 'NO_TOKEN'
+      });
     }
 
-    const verified = jwt.verify(token, process.env.JWT_SECRET);
-    // Normalize common fields to avoid undefined
-    req.user = {
-      _id: verified._id || verified.id || verified.sub,
-      role: verified.role || 'customer',
-      email: verified.email,
-      ...verified, // keep any extra claims
-    };
+    const token = authHeader.replace('Bearer ', '');
 
-    return next();
+    const decoded = verifyAccessToken(token, fingerprint);
+
+    req.user = decoded;
+
+    next();
   } catch (err) {
-    return res.status(401).json({ message: 'Token verification failed, authorization denied' });
-  }
-};
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Token expired',
+        code: 'TOKEN_EXPIRED'
+      });
+    }
 
-/**
- * Role guard: only allow users whose role is in allowedRoles
- * Usage: restrictTo('admin', 'vendor')
- */
-const restrictTo = (...allowedRoles) => (req, res, next) => {
-  if (!req.user) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  const userRole = req.user.role;
-  if (!allowedRoles.includes(userRole)) {
-    return res.status(403).json({ message: 'Forbidden' });
-  }
-  return next();
-};
+    if (err.name === 'JsonWebTokenError' || err.message === 'Fingerprint mismatch') {
+      return res.status(401).json({
+        success: false,
+        message: err.message === 'Fingerprint mismatch' ? 'Token fingerprint mismatch' : 'Invalid token',
+        code: err.message === 'Fingerprint mismatch' ? 'FINGERPRINT_MISMATCH' : 'INVALID_TOKEN'
+      });
+    }
 
-/**
- * Optional: ensure the current user is the vendor who owns the resource
- * Pass a function that returns the vendor id from the loaded resource.
- * Example:
- *   router.put('/:id', auth, restrictTo('admin','vendor'), ensureOwner(req => req.product.vendor))
- */
-const ensureOwner = (getOwnerId) => (req, res, next) => {
-  try {
-    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
-    const ownerId = getOwnerId(req);
-    if (!ownerId) return res.status(404).json({ message: 'Resource not found' });
-
-    const isAdmin = req.user.role === 'admin';
-    const isOwner = String(ownerId) === String(req.user._id);
-    if (!isAdmin && !isOwner) return res.status(403).json({ message: 'Forbidden' });
-
-    return next();
-  } catch (e) {
-    return res.status(400).json({ message: 'Ownership check failed' });
+    res.status(401).json({
+      success: false,
+      message: 'Token verification failed',
+      code: 'AUTH_FAILED'
+    });
   }
 };
 

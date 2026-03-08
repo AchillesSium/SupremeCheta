@@ -3,6 +3,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
+const constants = require('../src/config/constants');
+const { SECURITY, ACCOUNT } = constants;
+
 const userSchema = new mongoose.Schema(
     {
         username: {
@@ -77,6 +80,13 @@ const userSchema = new mongoose.Schema(
         },
         account_locked_until: Date,
         
+        // Token family for rotation tracking (invalidated on password change/security events)
+        token_family: {
+            type: String,
+            default: null
+        },
+        token_family_expires: Date,
+        
         // User preferences
         preferences: {
             newsletter: { 
@@ -133,8 +143,9 @@ userSchema.path('email').validate(function(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }, 'Invalid email format');
 
-// Phone number validation
+// Phone number validation (optional field, only validate if provided)
 userSchema.path('phone_number').validate(function(phone) {
+    if (!phone || phone.trim() === '') return true; // Allow empty
     return /^\+?[\d\s-]+$/.test(phone);
 }, 'Invalid phone number format');
 
@@ -196,7 +207,7 @@ userSchema.methods.generatePasswordResetToken = function() {
         .createHash('sha256')
         .update(resetToken)
         .digest('hex');
-    this.password_reset_expires = Date.now() + 30 * 60 * 1000; // 30 minutes
+    this.password_reset_expires = Date.now() + SECURITY.PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000;
     return resetToken;
 };
 
@@ -207,15 +218,15 @@ userSchema.methods.generateEmailVerificationToken = function() {
         .createHash('sha256')
         .update(verificationToken)
         .digest('hex');
-    this.email_verification_expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    this.email_verification_expires = Date.now() + SECURITY.EMAIL_VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000;
     return verificationToken;
 };
 
 // Track login attempt
 userSchema.methods.trackLoginAttempt = async function() {
     this.login_attempts += 1;
-    if (this.login_attempts >= 5) {
-        this.account_locked_until = new Date(Date.now() + 30 * 60 * 1000); // Lock for 30 minutes
+    if (this.login_attempts >= ACCOUNT.MAX_LOGIN_ATTEMPTS) {
+        this.account_locked_until = new Date(Date.now() + ACCOUNT.LOCKOUT_DURATION_MINUTES * 60 * 1000);
     }
     await this.save();
 };
@@ -225,6 +236,28 @@ userSchema.methods.resetLoginAttempts = async function() {
     this.login_attempts = 0;
     this.account_locked_until = undefined;
     await this.save();
+};
+
+// Generate new token family (for token rotation)
+userSchema.methods.generateTokenFamily = async function() {
+    this.token_family = crypto.randomBytes(16).toString('hex');
+    this.token_family_expires = new Date(Date.now() + SECURITY.TOKEN_FAMILY_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+    await this.save();
+    return this.token_family;
+};
+
+// Invalidate token family (logout all devices / password change)
+userSchema.methods.invalidateTokenFamily = async function() {
+    this.token_family = null;
+    this.token_family_expires = null;
+    await this.save();
+};
+
+// Verify token family matches
+userSchema.methods.isValidTokenFamily = function(family) {
+    return this.token_family === family && 
+           this.token_family_expires && 
+           this.token_family_expires > new Date();
 };
 
 // Static methods
