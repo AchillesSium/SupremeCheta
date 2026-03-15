@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const Brand = require('../models/brand');
+const Category = require('../models/category');
 
 const toAbsolute = (req, relPath) =>
   relPath ? `${req.protocol}://${req.get('host')}/${relPath.replace(/^\//, '')}` : null;
@@ -60,6 +61,35 @@ const normalizeIdsForUpdate = (val) => {
   return arr.map(toObjectId).filter(Boolean);
 };
 
+/**
+ * Syncs the brands[] array on Category documents to stay in sync with Brand.categories[].
+ *
+ * @param {ObjectId} brandId
+ * @param {string[]|ObjectId[]} newCategoryIds  - desired final category list for this brand
+ * @param {string[]|ObjectId[]} oldCategoryIds  - previous category list (pass [] on create)
+ */
+const syncBrandCategories = async (brandId, newCategoryIds = [], oldCategoryIds = []) => {
+  const newStrs = newCategoryIds.map(String);
+  const oldStrs = oldCategoryIds.map(String);
+
+  const added   = newStrs.filter((id) => !oldStrs.includes(id));
+  const removed = oldStrs.filter((id) => !newStrs.includes(id));
+
+  if (added.length) {
+    await Category.updateMany(
+      { _id: { $in: added.map(toObjectId) } },
+      { $addToSet: { brands: toObjectId(brandId) } }
+    );
+  }
+
+  if (removed.length) {
+    await Category.updateMany(
+      { _id: { $in: removed.map(toObjectId) } },
+      { $pull: { brands: toObjectId(brandId) } }
+    );
+  }
+};
+
 // ---------------------------------------------------------------------------
 
 /**
@@ -89,6 +119,9 @@ exports.createBrand = async (req, res) => {
     });
 
     await brand.save();
+
+     // Add this brand to every selected category's brands[]
+     await syncBrandCategories(brand._id, categories, []);
 
     const payload = brand.toObject();
     payload.logoUrl = toAbsolute(req, brand.logo);
@@ -175,6 +208,8 @@ exports.updateBrand = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Brand not found' });
     }
 
+    const oldCategoryIds = existing.categories.map(String);
+
     // If a new logo is provided, delete the old file (best effort)
     let logo = existing.logo;
     if (req.file) {
@@ -195,6 +230,11 @@ exports.updateBrand = async (req, res) => {
     existing.logo = logo;
 
     const updated = await existing.save();
+
+     // Sync category references only when categories were actually sent in the request
+     if (categories !== undefined) {
+      await syncBrandCategories(existing._id, categories, oldCategoryIds);
+    }
 
     const payload = updated.toObject();
     payload.logoUrl = toAbsolute(req, updated.logo);
